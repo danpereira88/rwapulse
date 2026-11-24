@@ -1,6 +1,6 @@
 """
 Chain sweep — every tokenised real-world asset CoinGecko lists on a chain,
-with supply read on-chain. Built for full Solana coverage.
+with supply read on-chain. Covers Solana and Ethereum.
 
 The main on-chain reader (ingest/rwa_supply.py) covers the RWA Pulse universe:
 the top of CoinGecko's RWA categories, looked up coin by coin. That misses
@@ -88,9 +88,6 @@ MIN_MCAP = 10_000           # stop paging a category below this market cap
 PAGE_PAUSE = 2.5 if CG_KEY else 6.0
 RPC_PAUSE = 0.15
 
-PLATFORM_READERS = {"solana": "solana"}
-
-
 def fetch_categories(categories=None, min_mcap: float = MIN_MCAP) -> dict:
     """{coingecko_id: {name, symbol, price, mcap, categories:[...]}} across categories."""
     coins = {}
@@ -112,13 +109,6 @@ def fetch_categories(categories=None, min_mcap: float = MIN_MCAP) -> dict:
                 break
         log.info(f"  {cat}: {n} coins")
     return coins
-
-
-def fetch_platform_addresses(platform: str) -> dict:
-    """{coingecko_id: address on platform}, from one call covering every coin."""
-    rows = cg_get("/coins/list", params={"include_platform": "true"}) or []
-    return {r["id"]: r["platforms"][platform] for r in rows
-            if (r.get("platforms") or {}).get(platform)}
 
 
 def asset_class(cg_id: str, coin: dict):
@@ -307,59 +297,181 @@ def read_solana_many(mints: list, batch: int = 100) -> dict:
     return out
 
 
-READERS = {"solana": read_solana_many}
+# ── EVM chains ──
+# ERC-20s have no standard "authority" fields. Issuer inventory is looked for
+# in the contract's owner(), the token contract itself, the issuer role getters
+# many RWA tokens expose (minter, burner, pauser, multiplierUpdater — Backed's
+# xStocks keep pre-minted inventory with the burner, e.g. 99.96% of TBLL xStock
+# on 24 Nov 2026), plus any known issuer treasuries below.
+# totalSupply/balanceOf are already in display units (xStocks' multiplier is
+# applied inside the contract: balanceOf = sharesOf × multiplier), so no
+# adjustment is needed on EVM.
+SEL_TOTAL_SUPPLY, SEL_DECIMALS, SEL_OWNER, SEL_BALANCE_OF = "0x18160ddd", "0x313ce567", "0x8da5cb5b", "0x70a08231"
+SEL_ROLES = {"minter()": "0x07546172", "burner()": "0x27810b6e", "pauser()": "0x9fd0506d",
+             "multiplierUpdater()": "0x0194b09b"}   # keccak-256 selectors
+ISSUER_TREASURIES = {   # platform -> extra wallets known to hold unsold issuer inventory
+    "ethereum": [],
+}
+EVM_BATCH = 20          # tokens per batched JSON-RPC request (7 calls each)
 
 
-def sweep(platform: str = "solana") -> pd.DataFrame:
-    now = datetime.now(timezone.utc).isoformat()
-    log.info(f"Sweeping CoinGecko tokenised-asset categories for {platform}")
-    coins = fetch_categories()
-    addrs = fetch_platform_addresses(platform)
-    keep = {}
-    for cg_id, coin in coins.items():
-        if cg_id in addrs:
-            cls, issuer = asset_class(cg_id, coin)
-            if cls is not None:
-                keep[cg_id] = (cls, issuer)
-    reads = READERS[platform]([addrs[c] for c in keep])
-    rows = []
-    for cg_id, (cls, issuer) in keep.items():
-        coin, addr = coins[cg_id], addrs[cg_id]
-        rd = reads.get(addr) or {"supply": None, "issuer_held": None, "error": "not read"}
-        amt, held, err = rd["supply"], rd["issuer_held"], rd["error"]
-        circ = max(amt - held, 0.0) if amt is not None and held is not None else None
-        status = err or ("ok" if held is not None else "ok, issuer holdings not read")
-        price = coin.get("price")
-        rows.append({"platform": platform, "coingecko_id": cg_id, "name": coin.get("name"),
-                     "symbol": coin.get("symbol"), "address": addr, "asset_class": cls, "issuer": issuer,
-                     "categories": ",".join(coin["categories"]), "supply": amt, "issuer_held": held,
-                     "circulating": circ, "price_usd": price,
-                     "minted_value_usd": amt * price if amt is not None and price else None,
-                     # value = circulating × price; minted when issuer holdings couldn't be read
-                     "value_usd": (circ if circ is not None else amt) * price if amt is not None and price else None,
-                     "cg_mcap_usd": coin.get("mcap"),
-                     "status": status if price else ("no price" if status.startswith("ok") else status),
-                     "ingested_at": now})
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        ok = df[df["status"].str.startswith("ok")]
-        log.info(f"{platform}: {len(df)} RWA tokens, {len(ok)} read, ${ok['value_usd'].sum() / 1e9:.2f}B circulating "
-                 f"(${ok['minted_value_usd'].sum() / 1e9:.2f}B minted)")
-    return df
+def evm_batch(platform: str, calls: list) -> list:
+    """calls: [(to, data)] -> [hex result or None], one batched request,
+    falling back across the chain's public endpoints."""
+    from ingest.rwa_supply import session, EVM_RPCS
+    payload = [{"jsonrpc": "2.0", "id": i, "method": "eth_call", "params": [{"to": to, "data": data}, "latest"]}
+               for i, (to, data) in enumerate(calls)]
+    last = None
+    for url in _rpcs(platform, EVM_RPCS[platform]):
+        try:
+            r = session.post(url, json=payload, timeout=40)
+            r.raise_for_status()
+            res = r.json()
+            if not isinstance(res, list):
+                raise RuntimeError(str(res)[:120])
+            by_id = {x.get("id"): x.get("result") for x in res}
+            return [by_id.get(i) for i in range(len(calls))]
+        except Exception as e:
+            last = e
+    raise RuntimeError(f"batched eth_call failed on all endpoints: {last}")
 
 
-def run(dry_run: bool = False, platform: str = "solana") -> dict:
-    """Never raises: a failed sweep must not block the weekly publish. The chain
-    page shows the sweep's date, so a stale sweep stays visible."""
+def _uint(h):
     try:
-        df = sweep(platform)
+        return int(h, 16) if h and h != "0x" else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _addr(h):
+    if not h or len(h) < 66:
+        return None
+    a = "0x" + h[-40:]
+    return None if int(a, 16) == 0 else a
+
+
+def read_evm_many(platform: str, addresses: list) -> dict:
+    """{address: {"supply", "issuer_held", "error"}} via batched eth_call:
+    totalSupply, decimals and owner() per token, then balanceOf for the owner,
+    the contract itself and known issuer treasuries."""
+    out, meta = {}, {}
+    for i in range(0, len(addresses), EVM_BATCH):
+        chunk = addresses[i:i + EVM_BATCH]
+        sels = (SEL_TOTAL_SUPPLY, SEL_DECIMALS, SEL_OWNER, *SEL_ROLES.values())
+        calls = [(a, sel) for a in chunk for sel in sels]
+        try:
+            res = evm_batch(platform, calls)
+        except Exception as e:
+            out.update({a: {"supply": None, "issuer_held": None, "error": f"read failed: {str(e)[:100]}"} for a in chunk})
+            continue
+        n = len(sels)
+        for k, a in enumerate(chunk):
+            ts, dec = res[n * k], _uint(res[n * k + 1])
+            wallets = {_addr(res[n * k + j]) for j in range(2, n)} - {None}
+            if _uint(ts) is None or dec is None or dec > 36:
+                out[a] = {"supply": None, "issuer_held": None, "error": "not an ERC-20 (no totalSupply/decimals)"}
+                continue
+            meta[a] = (dec, wallets)
+            out[a] = {"supply": _uint(ts) / 10 ** dec, "issuer_held": 0.0, "error": None}
+        time.sleep(RPC_PAUSE)
+    # Issuer inventory
+    pairs = []
+    for a, (dec, wallets) in meta.items():
+        for h in {*wallets, a.lower(), *ISSUER_TREASURIES.get(platform, [])}:
+            pairs.append((a, h))
+    for i in range(0, len(pairs), EVM_BATCH * 3):
+        chunk = pairs[i:i + EVM_BATCH * 3]
+        try:
+            res = evm_batch(platform, [(a, SEL_BALANCE_OF + h[2:].lower().rjust(64, "0")) for a, h in chunk])
+        except Exception as e:
+            for a, _ in chunk:
+                out[a]["issuer_held"] = None
+            log.warning(f"  issuer balances not read — {str(e)[:80]}")
+            continue
+        for (a, h), r in zip(chunk, res):
+            v = _uint(r)
+            if out[a]["issuer_held"] is not None and v is not None:
+                out[a]["issuer_held"] += v / 10 ** meta[a][0]
+        time.sleep(RPC_PAUSE)
+    return out
+
+
+READERS = {"solana": read_solana_many, "ethereum": lambda addrs: read_evm_many("ethereum", addrs)}
+SWEEP_PLATFORMS = ("solana", "ethereum")
+
+
+def fetch_all_platform_addresses(platforms) -> dict:
+    """{platform: {coingecko_id: address}} from one /coins/list call."""
+    rows = cg_get("/coins/list", params={"include_platform": "true"}) or []
+    out = {p: {} for p in platforms}
+    for r in rows:
+        for p in platforms:
+            a = (r.get("platforms") or {}).get(p)
+            if a:
+                out[p][r["id"]] = a
+    return out
+
+
+def sweep(platforms=SWEEP_PLATFORMS) -> pd.DataFrame:
+    """One pass over CoinGecko's categories, then every chain in `platforms`."""
+    now = datetime.now(timezone.utc).isoformat()
+    log.info(f"Sweeping CoinGecko tokenised-asset categories for {', '.join(platforms)}")
+    coins = fetch_categories()
+    addrs_by_platform = fetch_all_platform_addresses(platforms)
+    frames = []
+    for platform in platforms:
+        addrs = addrs_by_platform[platform]
+        keep = {}
+        for cg_id, coin in coins.items():
+            if cg_id in addrs:
+                cls, issuer = asset_class(cg_id, coin)
+                if cls is not None:
+                    keep[cg_id] = (cls, issuer)
+        try:
+            reads = READERS[platform]([addrs[c] for c in keep])
+        except Exception as e:
+            log.warning(f"{platform}: sweep reads failed — {e}")
+            continue
+        rows = []
+        for cg_id, (cls, issuer) in keep.items():
+            coin, addr = coins[cg_id], addrs[cg_id]
+            rd = reads.get(addr) or {"supply": None, "issuer_held": None, "error": "not read"}
+            amt, held, err = rd["supply"], rd["issuer_held"], rd["error"]
+            circ = max(amt - held, 0.0) if amt is not None and held is not None else None
+            status = err or ("ok" if held is not None else "ok, issuer holdings not read")
+            price = coin.get("price")
+            rows.append({"platform": platform, "coingecko_id": cg_id, "name": coin.get("name"),
+                         "symbol": coin.get("symbol"), "address": addr, "asset_class": cls, "issuer": issuer,
+                         "categories": ",".join(coin["categories"]), "supply": amt, "issuer_held": held,
+                         "circulating": circ, "price_usd": price,
+                         "minted_value_usd": amt * price if amt is not None and price else None,
+                         # value = circulating × price; minted when issuer holdings couldn't be read
+                         "value_usd": (circ if circ is not None else amt) * price if amt is not None and price else None,
+                         "cg_mcap_usd": coin.get("mcap"),
+                         "status": status if price else ("no price" if status.startswith("ok") else status),
+                         "ingested_at": now})
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            ok = df[df["status"].str.startswith("ok")]
+            log.info(f"{platform}: {len(df)} RWA tokens, {len(ok)} read, ${ok['value_usd'].sum() / 1e9:.2f}B "
+                     f"circulating (${ok['minted_value_usd'].sum() / 1e9:.2f}B minted)")
+            frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def run(dry_run: bool = False, platforms=SWEEP_PLATFORMS) -> dict:
+    """Never raises: a failed sweep must not block the weekly publish. The chain
+    pages show the sweep's date, so a stale sweep stays visible. All chains are
+    written in one snapshot (snapshots are idempotent per table and date)."""
+    try:
+        df = sweep(platforms)
     except Exception as e:
         log.warning(f"Chain sweep failed, keeping the last sweep — {e}")
         return {"warning": f"sweep failed: {e}"}
     if dry_run:
         with pd.option_context("display.width", 200, "display.max_rows", 80):
             print(df.sort_values("value_usd", ascending=False).head(60)
-                  [["coingecko_id", "asset_class", "issuer", "value_usd", "status"]].to_string(index=False))
+                  [["platform", "coingecko_id", "asset_class", "issuer", "value_usd", "status"]].to_string(index=False))
         return {"tokens": len(df), "dry_run": True}
     if df.empty or not df["status"].str.startswith("ok").any():
         log.warning("Chain sweep read nothing, keeping the last sweep")
@@ -369,12 +481,13 @@ def run(dry_run: bool = False, platform: str = "solana") -> dict:
         n = append_snapshot(con, "chain_sweep", df)
     finally:
         con.close()
-    return {"tokens": len(df), "rows_written": n}
+    return {"tokens": len(df), "rows_written": n, "platforms": sorted(df["platform"].unique())}
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--platform", default="solana", choices=sorted(READERS))
+    ap.add_argument("--platform", action="append", choices=sorted(READERS),
+                    help="chain to sweep (repeatable); default: all")
     a = ap.parse_args()
-    print(run(dry_run=a.dry_run, platform=a.platform))
+    print(run(dry_run=a.dry_run, platforms=tuple(a.platform) if a.platform else SWEEP_PLATFORMS))

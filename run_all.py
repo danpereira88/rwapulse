@@ -24,7 +24,7 @@ STEPS = [
     ("subgraphs",  "ingest.subgraphs",  "Maple, Centrifuge, Goldfinch subgraphs"),
     ("etherscan",  "ingest.etherscan",  "Etherscan holder counts and contract info"),
     ("rwa_supply", "ingest.rwa_supply", "Multichain RWA token supply × price (replaces DefiLlama TVL for big products)"),
-    ("chain_sweep", "ingest.chain_sweep", "Every tokenised asset CoinGecko lists on Solana, supply read on-chain"),
+    ("chain_sweep", "ingest.chain_sweep", "Every tokenised asset CoinGecko lists on Solana and Ethereum, supply read on-chain"),
 ]
 
 

@@ -668,11 +668,25 @@ def page_chain(con, platform="solana"):
 
     prev = series[-2] if len(series) > 1 else None
     widened = next((d for d in sorted(week_vals) if weeks[d][1]), None)
-    bench = _chain_benchmark() if platform == "solana" else None
-    ref = None
-    if bench:
-        row = next((n for n in bench["networks"] if n["name"] == label), None)
-        ref = {"value": row["value"], "as_of": bench["as_of"], "source": "rwa.xyz"} if row else None
+    bench = _chain_benchmark()
+    row = next((n for n in bench["networks"] if n["name"] == label), None)
+    ref = {"value": row["value"], "as_of": bench["as_of"], "source": "rwa.xyz"} if row else None
+    measured = None
+    if platform != "solana":
+        bench = None   # the distribution comparison lives on the Solana tab
+    else:
+        other = page_chain(con, "ethereum")
+        def card(p, inv, tot, n, cls, held_by):
+            return {"counted": tot, "n_tokens": n, "minted": inv["minted"] if inv else None,
+                    "held": inv["held"] if inv else None, "circulating": inv["circulating"] if inv else None,
+                    "classes": cls, "top_issuers": held_by[:3]}
+        measured = {"solana": card("solana", inventory, total, len(cur),
+                                   sorted(([CLASS_LABEL[c], v] for c, v in cls_latest.items()), key=lambda x: -x[1]),
+                                   sorted(([k, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1]) if total else []),
+                    "ethereum": card("ethereum", other["inventory"], other["total"], other["n_tokens"],
+                                     [[c[0], c[1]] for c in other["classes"]],
+                                     [[k, sh] for k, v, sh in other["issuers"]]),
+                    "eth_sweep_date": other["sweep_date"]}
     return {
         "chain": label, "platform": platform, "latest": latest, "reads": sorted(week_vals),
         "total": total, "n_tokens": len(cur), "sweep_date": latest_sweep, "coverage_widened": widened,
@@ -687,7 +701,8 @@ def page_chain(con, platform="solana"):
         "issuers": sorted(([k, v, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1])[:12],
         "assets": assets, "series": series, "unread": unread,
         "reference": ref, "both": both, "benchmark": bench, "inventory": inventory,
-        "disputed": disputed, "disputed_total": sum(d["value"] for d in disputed),
+        "disputed": disputed, "disputed_total": sum(d["value"] for d in disputed), "measured": measured,
+        "main_reader_adjust": (total - inventory["circulating"] + sum(d["value"] for d in disputed)) if inventory else None,
     }
 
 
@@ -702,7 +717,12 @@ def _sweep_disputed(cid, r):
     if cid in CHAIN_ONLY:            # cross-checked against DefiLlama instead
         return False
     v, mc = r["value_usd"] or 0, r["cg_mcap_usd"] or 0
-    return v > SWEEP_UNCHECKED_MAX if mc <= 0 else v > SWEEP_MAX_VS_MCAP * mc
+    if mc <= 0:
+        # Subscription funds (treasuries, MMFs, credit) mint when investors buy,
+        # so with nothing to compare against, supply is taken at face value.
+        # Stocks and commodities are often pre-minted: those need a market cap.
+        return r.get("asset_class") not in YIELD_BEARING and v > SWEEP_UNCHECKED_MAX
+    return v > SWEEP_MAX_VS_MCAP * mc
 
 
 def _chain_benchmark():
