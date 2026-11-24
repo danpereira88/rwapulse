@@ -27,10 +27,15 @@ if [ "$(git rev-list --count origin/main..HEAD)" != "0" ]; then
     echo "publish_site: this checkout has unpushed commits — push or reset them first; not publishing"
     exit 1
 fi
-# If this checkout is simply behind GitHub (no commits of its own), move the branch
-# pointer forward without touching files on disk, so the snapshot commit lands on top.
+# If this checkout is simply behind GitHub (no commits of its own), fast-forward it,
+# files included, so the export runs on the current code. (Moving only the branch
+# pointer would publish the site from stale code.) Refuses if tracked files have
+# local edits.
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-    git reset -q origin/main
+    if ! git merge -q --ff-only origin/main; then
+        echo "publish_site: couldn't fast-forward to GitHub (local edits to tracked files?) — not publishing"
+        exit 1
+    fi
 fi
 
 "${PY}" ui/export_static.py
