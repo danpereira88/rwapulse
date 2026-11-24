@@ -522,7 +522,7 @@ function measuredCompare(M, b) {
       <tr><td>Asset mix</td><td class="num" style="white-space:normal">${mix(S)}</td><td class="num" style="white-space:normal">${mix(E)}</td></tr>
       <tr><td>Largest issuers</td><td class="num" style="white-space:normal">${S.top_issuers.map(i => `${esc(i[0])} ${i[1].toFixed(0)}%`).join("<br>")}</td><td class="num" style="white-space:normal">${E.top_issuers.map(i => `${esc(i[0])} ${i[1].toFixed(0)}%`).join("<br>")}</td></tr>
     </tbody></table>
-    <p class="muted" style="font-size:12px">Same method on both chains: every tokenised asset CoinGecko lists, supply read from the chain, issuer inventory removed, values CoinGecko's market caps don't back up left out. Inventory detection differs by chain — Solana mints name their authority wallets; on Ethereum only the contract's owner, the contract itself and known issuer treasuries are checked — so Ethereum's inventory may be understated.</p></div>`;
+    <p class="muted" style="font-size:12px">Same method on both chains: every tokenised asset CoinGecko lists, supply read from the chain, issuer inventory removed, values CoinGecko's market caps don't back up left out. Inventory detection differs by chain — Solana mints name their authority wallets; on Ethereum the checks are the contract's owner, its issuer role wallets (minter, burner, pauser, multiplier updater) and the contract itself — so inventory under other role schemes may be missed on Ethereum.</p></div>`;
 }
 
 function solanaVsEvm(b, both, latest, measured) {
