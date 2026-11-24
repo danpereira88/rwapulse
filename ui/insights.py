@@ -514,3 +514,88 @@ def page_reference(con):
             "assets": [{"name": r["name"], "issuer": r["issuer"], "category": r["category"],
                         "chain": r["first_chain"], "tvl": r["tvl"], "source": r["source"],
                         "disputed": r["disputed"]} for r in assets]}
+
+
+# ── Chain pages (Solana first) ───────────────────────────────────────────────
+# Built only from on-chain reads (rwa_supply): what each token's mint/contract on
+# the chain reports, × its price. No CoinGecko market caps or DefiLlama TVL mixed
+# in, so every figure here is measured. Tokenised stocks are included, shown as
+# their own class, because chain views are about where assets live.
+
+CHAIN_ONLY_META = {"onyc": ("OnRe Tokenized Reinsurance", "credit", "OnRe")}
+
+
+def page_chain(con, platform="solana"):
+    from ingest.rwa_universe import CHAIN_ONLY
+    label = CHAIN_LABEL.get(platform, platform)
+    if not _has(con, "rwa_supply"):
+        return {"chain": label, "reads": [], "assets": [], "series": [], "classes": [], "unread": []}
+    names = {r["id"]: r for r in _q(con, """
+        SELECT coingecko_id AS id, any_value(name) AS name, any_value(symbol) AS symbol
+        FROM (SELECT coingecko_id, name, symbol FROM cg_rwa_category UNION ALL
+              SELECT coingecko_id, name, symbol FROM cg_rwa_tokens) GROUP BY 1""")}
+    cats = {r["id"]: r["c"] for r in _q(con, """SELECT coingecko_id AS id, string_agg(DISTINCT category_id, ',') AS c
+                                                FROM cg_rwa_category GROUP BY 1""")}
+
+    def meta(cid):
+        if cid in CHAIN_ONLY:
+            n, c, i = CHAIN_ONLY_META.get(cid, (cid, "other", cid))
+            return n, c, i
+        n = (names.get(cid) or {}).get("name") or cid
+        c, i = classify(cid, n, (names.get(cid) or {}).get("symbol") or "", cats.get(cid, ""))
+        return n, c, i
+
+    rows = _q(con, """SELECT snapshot_date, coingecko_id AS id, platform, status, value_usd
+                      FROM rwa_supply WHERE platform IS NOT NULL AND snapshot_date LIKE '20%'""")
+    dates = sorted({r["snapshot_date"] for r in rows})
+    latest = dates[-1] if dates else None
+
+    by_date = defaultdict(lambda: defaultdict(float))       # date -> class -> value on chain
+    all_chains_total = defaultdict(float)                   # date -> measured value, every chain
+    asset_total = defaultdict(float)                         # (date, id) -> value, every chain
+    on_chain = defaultdict(float)                            # (date, id) -> value on this chain
+    unread = []
+    for r in rows:
+        name, cls, issuer = meta(r["id"])
+        if cls is None:
+            continue  # excluded token (governance etc.)
+        ok = r["status"] == "ok" and r["value_usd"]
+        if ok:
+            all_chains_total[r["snapshot_date"]] += r["value_usd"]
+            asset_total[(r["snapshot_date"], r["id"])] += r["value_usd"]
+        if r["platform"] == platform:
+            if ok:
+                on_chain[(r["snapshot_date"], r["id"])] += r["value_usd"]
+                by_date[r["snapshot_date"]][cls] += r["value_usd"]
+            elif r["status"] != "ok" and r["snapshot_date"] == latest:
+                unread.append({"name": name, "issuer": issuer, "status": r["status"]})
+
+    assets = []
+    for (d, cid), v in on_chain.items():
+        if d != latest or v < 1e5:
+            continue
+        name, cls, issuer = meta(cid)
+        tot = asset_total[(d, cid)]
+        assets.append({"name": name, "issuer": issuer, "category": CLASS_LABEL[cls], "asset_class": cls,
+                       "tvl": v, "share_of_asset": v / tot * 100 if tot else None, "source": "onchain"})
+    assets.sort(key=lambda a: -a["tvl"])
+
+    total = sum(a["tvl"] for a in assets)
+    issuers = defaultdict(float)
+    for a in assets:
+        issuers[a["issuer"]] += a["tvl"]
+    cls_latest = by_date.get(latest, {})
+    series = [[d, sum(by_date[d].values())] for d in dates]
+    prev = dates[-2] if len(dates) > 1 else None
+    return {
+        "chain": label, "platform": platform, "latest": latest, "reads": dates,
+        "total": total,
+        "yield_bearing": sum(v for c, v in cls_latest.items() if c in YIELD_BEARING),
+        "stocks": cls_latest.get("stocks", 0), "commodities": cls_latest.get("commodities", 0),
+        "share_of_measured": (total / all_chains_total[latest] * 100) if latest and all_chains_total[latest] else None,
+        "measured_all_chains": all_chains_total.get(latest, 0),
+        "change_vs_prev": ((series[-1][1] / series[-2][1] - 1) * 100) if prev and series[-2][1] else None,
+        "classes": sorted(([CLASS_LABEL[c], v, v / total * 100] for c, v in cls_latest.items() if total), key=lambda x: -x[1]),
+        "issuers": sorted(([k, v, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1])[:10],
+        "assets": assets, "series": series, "unread": unread,
+    }

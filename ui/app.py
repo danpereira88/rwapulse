@@ -349,7 +349,8 @@ class Handler(BaseHTTPRequestHandler):
                   "/api/page/roster": lambda c, q: clean(insights.page_roster(c)),
                   "/api/page/didnt-happen": lambda c, q: clean(insights.page_didnt_happen(c)),
                   "/api/page/watching": lambda c, q: clean(insights.page_watching(c)),
-                  "/api/page/reference": lambda c, q: clean(insights.page_reference(c))}
+                  "/api/page/reference": lambda c, q: clean(insights.page_reference(c)),
+                  "/api/page/solana": lambda c, q: clean(insights.page_chain(c, "solana"))}
         try:
             if u.path == "/api/csv":
                 return self.csv(qs)

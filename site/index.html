@@ -284,6 +284,7 @@ function buildNav(tables) {
   add(`<h4>Pulse</h4>` + [["overview","Overview"],["concentration","Concentration"],["roster","New Roster"],
        ["didnt-happen","What Didn't Happen"],["reference","Reference"],["watching","What We're Watching"]]
        .map(([k, l]) => `<button data-r="${k}">${l}</button>`).join(""));
+  add(`<h4>Chains</h4><button data-r="solana">Solana</button>`);
   if (!STATIC) add(`<h4>Data</h4><button data-r="health">Data health</button>`);
   if (STATIC) {
     nav.addEventListener("click", e => { const b = e.target.closest("button[data-r]"); if (b) location.hash = b.dataset.r; });
@@ -305,7 +306,7 @@ function route() {
   // On phones the nav is a horizontal strip: keep the current page's tab in view
   document.querySelector("nav button.active")?.scrollIntoView({ inline: "center", block: "nearest" });
   const pages = { overview: pOverview, concentration: pConcentration, roster: pRoster,
-                  "didnt-happen": pDidnt, reference: pReference, watching: pWatching, health: overview };
+                  "didnt-happen": pDidnt, reference: pReference, watching: pWatching, solana: pSolana, health: overview };
   if (STATIC && kind === "health") { location.hash = "overview"; return; }
   if (pages[kind]) return load(m, pages[kind]);
   if (kind === "view") return grid(m, "view", name);
@@ -438,6 +439,36 @@ async function pReference(m) {
     ${r.assets.map(a => `<tr><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="muted">${esc(a.chain || "—")}</td><td class="num">${compact(a.tvl, true)}</td><td>${srcPill(a.source, a.disputed)}</td></tr>`).join("")}
     </tbody></table>
     <p class="muted" style="font-size:12px">Yield-bearing funds (USDY, OUSG, USYC, USTB…) are valued at their reported NAV, not a secondary-market price. Gold tokens use market prices.</p></div>`;
+}
+
+// ── Solana ──
+async function pSolana(m) {
+  const s = await api("/api/page/solana");
+  if (!s.latest) { m.innerHTML = `<div class="eyebrow">Solana</div>${lede("No on-chain reads yet.")}`; return; }
+  const reads = s.reads.length;
+  m.innerHTML = `<div class="eyebrow">Chain · Solana</div>
+    ${lede(`${compact(s.total, true)} of tokenised real-world assets sit on Solana, read directly from the token mints.`,
+      `As of ${esc(s.latest)}. Measured on-chain only — mint supply × price — so every figure here is a reading, not an estimate. That is ${s.share_of_measured == null ? "—" : s.share_of_measured.toFixed(1) + "%"} of all RWA value read on-chain across chains (${compact(s.measured_all_chains, true)}). Tokenised stocks are included here, as their own class.`)}
+    <div class="banner"><b>Coverage.</b> Only tokens in the RWA Pulse universe are read, so Solana-native assets that CoinGecko doesn't list are missing.
+      ${reads < 2 ? `This view starts on ${esc(s.reads[0])} — ${reads} weekly read so far, so there's no trend yet.` : `${reads} weekly reads since ${esc(s.reads[0])}.`}
+      ${s.unread.length ? ` ${s.unread.length} token(s) listed on Solana couldn't be read this week: ${s.unread.map(u => esc(u.name)).join(", ")}.` : ""}</div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">RWA value on Solana</div><div class="value">${compact(s.total, true)}</div><div class="note">${s.change_vs_prev == null ? `${s.assets.length} assets` : pct(s.change_vs_prev) + " vs last read"}</div></div>
+      <div class="kpi"><div class="label">Yield-bearing</div><div class="value">${compact(s.yield_bearing, true)}</div><div class="note">Treasuries, MMFs & credit</div></div>
+      <div class="kpi"><div class="label">Tokenised stocks</div><div class="value">${compact(s.stocks, true)}</div><div class="note">equities & ETFs</div></div>
+      <div class="kpi"><div class="label">Gold & commodities</div><div class="value">${compact(s.commodities, true)}</div><div class="note">on Solana</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>By asset class <small>${esc(s.latest)}</small></h3>${bars(s.classes.map(c => [`${c[0]} · ${c[2].toFixed(1)}%`, c[1]]))}
+        <h3 style="margin-top:20px">By issuer</h3>${bars(s.issuers.map(c => [`${c[0]} · ${c[2].toFixed(1)}%`, c[1]]))}</div>
+      <div class="card"><h3>RWA value on Solana <small>weekly on-chain reads</small></h3>
+        ${s.series.length > 1 ? multiLine([{name: "On Solana", color: "var(--teal)", points: s.series}]) : `<p class="muted">The weekly series starts on ${esc(s.reads[0])}; the chart appears after the second read.</p>`}</div>
+    </div>
+    <div class="card"><h3>Assets on Solana <small>${s.assets.length} · ${esc(s.latest)}</small></h3>
+      <table><thead><tr><th>#</th><th>Asset</th><th>Issuer</th><th>Asset class</th><th class="num">Value on Solana</th><th class="num">Share of asset's supply</th></tr></thead><tbody>
+      ${s.assets.map((a, i) => `<tr><td class="muted">${i + 1}</td><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="num">${compact(a.tvl, true)}</td><td class="num">${a.share_of_asset == null ? "—" : a.share_of_asset.toFixed(0) + "%"}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="muted" style="font-size:12px">"Share of asset's supply" is the part of each asset's on-chain value that sits on Solana, out of every chain we read for it.</p></div>`;
 }
 
 // ── What We're Watching ──

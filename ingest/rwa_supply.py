@@ -338,7 +338,7 @@ def universe_products(min_mcap: float = 5e6) -> dict:
     """PRODUCTS plus every other token in the asset universe (ingest/rwa_universe.py)
     from the latest CoinGecko category snapshot, except tokenised stocks and
     tokens under min_mcap. Those extra tokens sit under the pseudo-slug '_universe'."""
-    from ingest.rwa_universe import classify, CURATED
+    from ingest.rwa_universe import classify, CURATED, CHAIN_ONLY
     products = {k: list(v) for k, v in PRODUCTS.items()}
     have = {c for ids in products.values() for c in ids}
     try:
@@ -357,9 +357,14 @@ def universe_products(min_mcap: float = 5e6) -> dict:
     extra = []
     for cid, name, sym, cats, mc in rows:
         cls, _ = classify(cid, name or "", sym or "", cats or "")
-        if cls and cls != "stocks" and cid not in have and ((mc or 0) >= min_mcap or cid in CURATED):
+        # Stocks are read too: they're kept out of the headline totals, but the
+        # per-chain views (e.g. the Solana tab) need where tokenised stocks live.
+        if cls and cid not in have and ((mc or 0) >= min_mcap or cid in CURATED):
             extra.append(cid)
     extra += [c for c in CURATED if c not in have and c not in extra]
+    # Tokens counted through DefiLlama in the totals, read on-chain only so the
+    # per-chain views can place them (no double count: chain views use reads only)
+    extra += [c for c in CHAIN_ONLY if c not in have and c not in extra]
     if extra:
         products["_universe"] = sorted(set(extra))
     log.info(f"Reading {sum(len(v) for v in products.values())} tokens on-chain "

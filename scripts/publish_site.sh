@@ -27,6 +27,11 @@ if [ "$(git rev-list --count origin/main..HEAD)" != "0" ]; then
     echo "publish_site: this checkout has unpushed commits — push or reset them first; not publishing"
     exit 1
 fi
+# If this checkout is simply behind GitHub (no commits of its own), move the branch
+# pointer forward without touching files on disk, so the snapshot commit lands on top.
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+    git reset -q origin/main
+fi
 
 "${PY}" ui/export_static.py
 

@@ -60,6 +60,11 @@ CURATED = {
     "franklin-templeton-benji", "midas-mtbill", "vaneck-treasury-fund",
 }
 
+# Tokens whose issuer is counted through DefiLlama in the totals (so they're in
+# EXCLUDE above) but which should still be read on-chain, chain by chain, for the
+# per-chain views. Chain views use on-chain reads only, so nothing is double counted.
+CHAIN_ONLY = {"onyc"}
+
 # DefiLlama protocols still reporting TVL, with no matching token on CoinGecko.
 # slug -> (display name, asset class, issuer)
 DL_ONLY = {
