@@ -16,7 +16,8 @@ Everything here is a rule you can read and change. Asset classes:
   credit      — private and structured credit, receivables, reinsurance
   commodities — gold, silver and other physical commodities
   stocks      — tokenised equities and ETFs (tracked, kept out of yield-bearing)
-  other       — other real-world assets (real estate, vaults, mixed funds)
+  other       — other real-world assets (real estate, vaults, mixed funds); kept
+                out of the yield-bearing headline until reviewed
 """
 
 import re
@@ -40,8 +41,9 @@ EXCLUDE = {
     "blockchain-capital", "staked-usdt",
 }
 NOTES = {
-    "figure-heloc": "Figure HELOC (~$29B) is loan records on Provenance, not a tradable token; "
-                    "DefiLlama and most trackers leave it out, so it is excluded here too.",
+    "figure-heloc": "Figure HELOC (~$29B, on Provenance) is excluded by RWA Pulse's methodology: it "
+                    "represents loan records rather than a freely transferable token. DefiLlama and "
+                    "rwa.xyz both list it, so totals here run lower than theirs by that amount.",
 }
 EXCLUDE |= set(NOTES)
 
@@ -135,7 +137,7 @@ def classify(cg_id: str, name: str = "", symbol: str = "", categories: str = "")
     return cls, issuer or (name or cg_id)
 
 
-YIELD_BEARING = {"treasuries", "credit", "other"}
+YIELD_BEARING = {"treasuries", "credit"}  # "other" stays out until reviewed
 CLASS_LABEL = {"treasuries": "Treasuries & MMFs", "credit": "Private & structured credit",
                "commodities": "Gold & commodities", "stocks": "Tokenised stocks & ETFs",
                "other": "Other RWAs"}

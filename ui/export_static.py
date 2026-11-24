@@ -2,8 +2,8 @@
 Export the dashboard as a static site for Vercel (or any static host).
 
 Writes site/index.html plus site/data/*.json, computed from data/rwa.duckdb.
-The static site has the six RWA Intel pages and Data health; the raw table
-browser and SQL console need the local server (ui/app.py) and are hidden.
+The static site has the six editorial pages only; Data health, the raw table
+browser and the SQL console need the local server (ui/app.py).
 
 Usage (project root):  .venv/bin/python ui/export_static.py
 """
@@ -39,10 +39,15 @@ def main():
         write("page-roster", insights.page_roster(con))
         write("page-didnt-happen", insights.page_didnt_happen(con))
         write("page-watching", insights.page_watching(con))
-        write("overview", app.api_overview(con, {}))
-        for v, sort in (("protocols", "tvl_usd"), ("tokens", "market_cap_usd")):
-            write(f"view-{v}", app.api_view(con, {"name": [v], "limit": ["5000"], "sort": [sort]}))
-        write("meta", {"exported_at": datetime.now(timezone.utc).isoformat(timespec="minutes")})
+        write("page-reference", insights.page_reference(con))
+        # No raw table dumps (CoinGecko/DefiLlama tables) on the public site — only
+        # the derived editorial pages above. See README "Data sources and terms".
+        for stale in ("overview", "view-protocols", "view-tokens"):
+            write(stale, {"removed": "not published on the static site"})
+        ov = insights.page_overview(con)
+        write("meta", {"exported_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+                       "data_as_of": ov["latest"], "methodology": "v2 (asset-level, 2026-11-24)",
+                       "yield_total": ov["yield_total"], "missing_pct": (ov["coverage"]["missing"] or 0) / (ov["yield_total"] or 1) * 100})
     finally:
         con.close()
     html = (HERE / "index.html").read_text()

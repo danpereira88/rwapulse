@@ -146,10 +146,13 @@ def universe(con):
             complete = bool(o and o["n_ok"] == o["n"])
             val, src = None, "missing"
             ratio = (ov / mc) if (ov and mc) else None
-            # CoinGecko's chain list can be incomplete, so "every listed chain read"
-            # isn't enough alone: on-chain must also land near CoinGecko's figure.
-            if ov and (not mc or 0.75 <= ratio <= 1.5 or (complete and 0.5 <= ratio <= 2)):
+            # On-chain wins only when every listed chain was read AND it lands
+            # within 0.75–1.5× of CoinGecko. A partial read is used only when
+            # CoinGecko has no figure at all (marked "onchain-partial").
+            if ov and complete and (not mc or 0.75 <= ratio <= 1.5):
                 val, src = ov, "onchain"
+            elif ov and not mc:
+                val, src = ov, "onchain-partial"
             elif mc and mc > 0:
                 val, src = mc, "coingecko"
             elif DL_FALLBACK.get(aid) and dl[DL_FALLBACK[aid]].get(snap):
@@ -163,8 +166,8 @@ def universe(con):
                          "first_chain": chain_of.get(aid), "tvl": val, "source": src,
                          "last_known": last.get(aid) if val is None else None,
                          "yield_bearing": m["asset_class"] in YIELD_BEARING,
-                         "cross_check": (mc if src == "onchain" else ov),
-                         "disputed": bool(ratio and src != "onchain" and complete)})
+                         "cross_check": (mc if src.startswith("onchain") else ov),
+                         "disputed": bool(ratio and complete and not src.startswith("onchain"))})
             if val:
                 last[aid] = val
         for slug, (name, cls, issuer) in DL_ONLY.items():
@@ -250,6 +253,33 @@ def _notes():
     return list(NOTES.values())
 
 
+# ── Like-for-like comparisons ────────────────────────────────────────────────
+# A change between two snapshots only counts assets that have a value at BOTH
+# ends from the SAME source. A switch of source (e.g. CoinGecko → on-chain) or an
+# asset dropping out of coverage can otherwise look like a market move.
+
+def _panel(v0, v1):
+    a = {r["slug"]: r for r in v0 if r["tvl"]}
+    b = {r["slug"]: r for r in v1 if r["tvl"]}
+    keep = {k for k in a.keys() & b.keys() if a[k]["source"] == b[k]["source"]}
+    return [a[k] for k in keep], [b[k] for k in keep]
+
+
+def _lfl(v0, v1):
+    """Like-for-like change between two snapshots' rows."""
+    p0, p1 = _panel(v0, v1)
+    t0, t1 = sum(r["tvl"] for r in p0), sum(r["tvl"] for r in p1)
+    total1 = sum(r["tvl"] for r in v1 if r["tvl"]) or 1
+    return {"change_pct": (t1 / t0 - 1) * 100 if t0 else None, "coverage_pct": t1 / total1 * 100,
+            "from": t0, "to": t1}
+
+
+def _ago(dates, latest, days):
+    target = _d(latest) - timedelta(days=days)
+    past = [d for d in dates if _d(d) <= target]
+    return past[-1] if past else None
+
+
 # ── Pages ────────────────────────────────────────────────────────────────────
 
 def page_overview(con):
@@ -257,14 +287,17 @@ def page_overview(con):
     yb, br, al = _by_date(rows, True), _by_date(rows, False), _by_date(rows, False, include_stocks=True)
     dates = list(yb)
     latest, first = dates[-1], dates[0]
-    s_l, s_f, b_l, a_l = _stats(yb[latest]), _stats(yb[first]), _stats(br[latest]), _stats(al[latest])
+    m30 = _ago(dates, latest, 28)
+    s_l, b_l, a_l = _stats(yb[latest]), _stats(br[latest]), _stats(al[latest])
     cls = defaultdict(float)
     for r in al[latest]:
         if r["tvl"]:
             cls[r["category"]] += r["tvl"]
     return {
-        "latest": latest, "first": first,
-        "yield_total": s_l["total"], "yield_first": s_f["total"],
+        "latest": latest, "first": first, "month_ago": m30,
+        "yield_total": s_l["total"],
+        "change_since_first": _lfl(yb[first], yb[latest]),
+        "change_30d": _lfl(yb[m30], yb[latest]) if m30 else None,
         "broad_total": b_l["total"], "gold_total": b_l["total"] - s_l["total"],
         "all_total": a_l["total"], "stocks_total": a_l["total"] - b_l["total"],
         "n_protocols": s_l["n"], "n_assets": s_l["n_assets"],
@@ -284,8 +317,7 @@ def page_concentration(con):
     for d in yb:
         a, b, cm = _stats(yb[d]), _stats(br[d]), _stats(yb[d], carry_missing=True)
         series.append({"date": d, "top5": a["top5"], "hhi": a["hhi"], "top5_broad": b["top5"],
-                       "hhi_broad": b["hhi"], "filled_pct": _coverage(a)["filled_pct"],
-                       "top5_carry": cm["top5"], "hhi_carry": cm["hhi"]})
+                       "hhi_broad": b["hhi"], "top5_carry": cm["top5"], "hhi_carry": cm["hhi"]})
     latest = list(yb)[-1]
     st = _stats(yb[latest])
     rosters = {d: [r["name"] for r in _stats(v)["ranked"][:5]] for d, v in yb.items()}
@@ -305,46 +337,60 @@ def page_roster(con):
     cards = []
     for p in ROSTER:
         if p["ids"] == ["subgraph:centrifuge"]:
-            pts = [[r["snapshot_date"], r["v"]] for r in sub if r["v"]]
-            source = "centrifuge subgraph"
+            pts = [[r["snapshot_date"], r["v"], "centrifuge subgraph"] for r in sub if r["v"]]
         else:
-            agg = defaultdict(float)
-            srcs = set()
+            agg, srcs = defaultdict(float), defaultdict(set)
             for aid in p["ids"]:
                 for r in by_id.get(aid, []):
                     if r["tvl"]:
                         agg[r["snapshot_date"]] += r["tvl"]
-                        srcs.add(r["source"])
-            pts = sorted([d, v] for d, v in agg.items())
-            last_src = {r["source"] for aid in p["ids"] for r in by_id.get(aid, [])[-1:]}
-            source = last_src.pop() if len(last_src) == 1 else "mixed"
+                        srcs[r["snapshot_date"]].add(r["source"])
+            pts = sorted([d, v, "+".join(sorted(srcs[d]))] for d, v in agg.items())
         last = pts[-1][0] if pts else None
+        src_now = pts[-1][2] if pts else "missing"
         cutoff = (_d(last) - timedelta(days=90)).isoformat() if last else None
-        recent = [x for x in pts if cutoff and x[0] >= cutoff]
-        chg = (recent[-1][1] / recent[0][1] - 1) * 100 if len(recent) > 1 and recent[0][1] else None
+        # Trajectory only over the run of snapshots measured the same way as today
+        run = []
+        for x in reversed(pts):
+            if x[2] != src_now or (cutoff and x[0] < cutoff):
+                break
+            run.append(x)
+        run.reverse()
+        chg = (run[-1][1] / run[0][1] - 1) * 100 if len(run) > 1 and run[0][1] else None
         cards.append({**{k: p[k] for k in ("key", "name", "parent", "kind", "blurb")},
-                      "metric": "Value", "source": source, "current": pts[-1][1] if pts else None,
-                      "as_of": last, "change_90d": chg, "points": recent, "all_points": pts})
+                      "metric": "Value", "source": src_now, "current": pts[-1][1] if pts else None,
+                      "as_of": last, "change_90d": chg, "change_from": run[0][0] if run else None,
+                      "points": [[x[0], x[1]] for x in run]})
     return {"cards": cards}
 
 
-def _chain_split(con):
-    """Share of on-chain-measured RWA value by chain, per on-chain read date."""
+MIN_CHAIN_COVERAGE = 90  # % of yield-bearing value read on-chain before Watch 02 can fire
+MIN_CHAIN_READS = 2      # consecutive on-chain reads before Watch 02 can fire
+MIN_PANEL_COVERAGE = 80  # % of an issuer's value that must be like-for-like for Watch 03
+
+
+def _chain_split(con, rows, latest):
+    """Share by chain of the yield-bearing value the dashboard actually counts from
+    on-chain reads (assets whose accepted source on the latest snapshot is on-chain)."""
     if not _has(con, "rwa_supply"):
-        return [], {}, 0
-    rows = _q(con, """SELECT snapshot_date, platform, sum(value_usd) AS v FROM rwa_supply
-                      WHERE status = 'ok' AND value_usd > 0 GROUP BY 1, 2""")
+        return [], {}, 0, 0
+    ids = [r["slug"] for r in rows if r["snapshot_date"] == latest and r["yield_bearing"]
+           and r["source"] == "onchain" and r["tvl"]]
+    if not ids:
+        return [], {}, 0, 0
+    marks = ",".join("?" * len(ids))
+    q = _q(con, f"""SELECT snapshot_date, platform, sum(value_usd) AS v FROM rwa_supply
+                    WHERE status = 'ok' AND value_usd > 0 AND snapshot_date LIKE '20%'
+                      AND coingecko_id IN ({marks}) GROUP BY 1, 2""", ids)
     by = defaultdict(dict)
-    for r in rows:
+    for r in q:
         by[r["snapshot_date"]][CHAIN_LABEL.get(r["platform"], r["platform"])] = r["v"]
-    series, latest = [], {}
+    series, shares, total = [], {}, 0
     for d in sorted(by):
-        t = sum(by[d].values())
-        shares = {k: v / t * 100 for k, v in by[d].items()}
+        total = sum(by[d].values())
+        shares = {k: v / total * 100 for k, v in by[d].items()}
         series.append([d, shares.get("Ethereum", 0)])
-        latest = shares
-        latest_total = t
-    return series, latest, (latest_total if by else 0)
+    return series, shares, total, len(by)
 
 
 def page_didnt_happen(con):
@@ -352,78 +398,87 @@ def page_didnt_happen(con):
     yb = _by_date(rows, True)
     dates = list(yb)
     first, latest = dates[0], dates[-1]
-
-    # 1. Chain rotation — measured from on-chain reads (true per-chain balances)
-    eth_series, chain_latest, oc_total = _chain_split(con)
-    drivers = defaultdict(list)
-    if _has(con, "rwa_supply"):
-        for r in _q(con, """SELECT platform, coingecko_id, sum(value_usd) AS v FROM rwa_supply
-                            WHERE status = 'ok' AND snapshot_date = (SELECT max(snapshot_date) FROM rwa_supply)
-                            GROUP BY 1, 2 ORDER BY v DESC"""):
-            ch = CHAIN_LABEL.get(r["platform"], r["platform"])
-            if ch != "Ethereum" and len(drivers[ch]) < 3 and oc_total and r["v"] / oc_total >= 0.0005:
-                nm = next((x["name"] for x in rows if x["slug"] == r["coingecko_id"]), r["coingecko_id"])
-                drivers[ch].append([nm, r["v"] / oc_total * 100])
-    chains = [[c, s, drivers.get(c, [])] for c, s in sorted(chain_latest.items(), key=lambda x: -x[1])[:8]]
     total_l = _stats(yb[latest])["total"]
 
-    # 2. Broadening beyond Treasuries — asset class share and growth
-    def cls_totals(v):
-        agg = defaultdict(float)
-        for r in v:
-            if r["tvl"]:
-                agg[r["category"]] += r["tvl"]
-        return agg
-    c0, c1 = cls_totals(yb[first]), cls_totals(yb[latest])
-    t1 = sum(c1.values())
-    cats = sorted(([k, c1[k], c1[k] / t1 * 100, (c1[k] / c0[k]) if c0.get(k) else None] for k in c1),
-                  key=lambda x: -x[1])
+    # 1. Chain rotation — measured on-chain, chain by chain
+    eth_series, chain_latest, oc_total, n_reads = _chain_split(con, rows, latest)
+    chains = [[c, s, []] for c, s in sorted(chain_latest.items(), key=lambda x: -x[1])[:8]]
 
-    # 3. Quiet giants — issuers outside the top 10, ≥3× since first snapshot, >$50M
-    s_first, s_last = _stats(yb[first]), _stats(yb[latest])
+    # 2. Broadening beyond Treasuries — like-for-like growth by asset class
+    cats = []
+    t1 = sum(r["tvl"] for r in yb[latest] if r["tvl"]) or 1
+    for label in sorted({r["category"] for r in yb[latest] if r["tvl"]}):
+        v0 = [r for r in yb[first] if r["category"] == label]
+        v1 = [r for r in yb[latest] if r["category"] == label]
+        now = sum(r["tvl"] for r in v1 if r["tvl"])
+        lfl = _lfl(v0, v1)
+        mult = (lfl["to"] / lfl["from"]) if lfl["from"] else None
+        cats.append([label, now, now / t1 * 100, mult, lfl["coverage_pct"]])
+    cats.sort(key=lambda x: -x[1])
+
+    # 3. Quiet giants — issuers outside the top 10, ≥3× like-for-like, >$50M
+    s_last = _stats(yb[latest])
     top10 = {r["slug"] for r in s_last["ranked"][:10]}
-    start = {r["slug"]: r["tvl"] for r in s_first["ranked"]}
-    risers = [{**_row(r), "start": start[r["slug"]], "multiple": r["tvl"] / start[r["slug"]]}
-              for r in s_last["ranked"]
-              if r["slug"] not in top10 and r["tvl"] >= 50e6 and start.get(r["slug"])]
+    risers = []
+    for r in s_last["ranked"]:
+        if r["slug"] in top10 or r["tvl"] < 50e6:
+            continue
+        v0 = [x for x in yb[first] if x["issuer"] == r["slug"]]
+        v1 = [x for x in yb[latest] if x["issuer"] == r["slug"]]
+        lfl = _lfl(v0, v1)
+        if lfl["from"] and lfl["coverage_pct"] >= 80:
+            risers.append({**_row(r), "start": lfl["from"], "multiple": lfl["to"] / lfl["from"]})
     risers.sort(key=lambda x: -x["multiple"])
     giants = [x for x in risers if x["multiple"] >= 3]
 
     return {"first": first, "latest": latest, "baseline": BASELINE,
-            "eth_series": eth_series, "chains": chains,
+            "eth_series": eth_series, "chains": chains, "chain_reads": n_reads,
+            "chain_min_coverage": MIN_CHAIN_COVERAGE,
             "chain_coverage": (oc_total / total_l * 100) if total_l else 0,
             "categories": cats, "giants": giants, "risers": risers[:8]}
+
+
 
 
 def page_watching(con):
     dh = page_didnt_happen(con)
     rows = universe(con)
     yb = _by_date(rows, True)
+    dates = list(yb)
+    latest = dates[-1]
 
-    # Watch 01 — a non-Treasury asset class >5% of yield-bearing value AND 5× growth
+    # Watch 01 — a non-Treasury asset class >5% of yield-bearing value AND ≥5× like-for-like
     cand = [c for c in dh["categories"] if c[0] != CLASS_LABEL["treasuries"]]
     lead = max(cand, key=lambda c: c[2]) if cand else None
-    w1 = any(c[2] > 5 and (c[3] or 0) >= 5 for c in cand)
+    w1 = "triggered" if any(c[2] > 5 and (c[3] or 0) >= 5 for c in cand) else "clear"
 
-    # Watch 02 — Ethereum share of on-chain-measured value below 70%
+    # Watch 02 — Ethereum share below 70%, only once coverage and history allow
     eth = dh["eth_series"][-1][1] if dh["eth_series"] else None
+    if eth is None or dh["chain_coverage"] < MIN_CHAIN_COVERAGE or dh["chain_reads"] < MIN_CHAIN_READS:
+        w2, w2_read = "insufficient", (
+            f"Not enough data yet: {dh['chain_coverage']:.0f}% of value read on-chain over "
+            f"{dh['chain_reads']} read(s); needs {MIN_CHAIN_COVERAGE}% over {MIN_CHAIN_READS}."
+        )
+    else:
+        w2, w2_read = ("triggered" if eth < 70 else "clear"), f"Ethereum at {eth:.1f}%"
 
-    # Watch 03 — an anchor issuer (top-10 by peak) down ≥50% from its peak in the window
-    peak, cur = defaultdict(lambda: (0, None)), {}
-    for d, v in yb.items():
-        for r in _issuers(v):
-            if r["tvl"] and r["tvl"] > peak[r["slug"]][0]:
-                peak[r["slug"]] = (r["tvl"], d)
-    latest = list(yb)[-1]
-    for r in _issuers(yb[latest]):
-        cur[r["slug"]] = r
+    # Watch 03 — an anchor issuer down ≥50%, like-for-like against each earlier snapshot
+    cur = {r["slug"]: r for r in _issuers(yb[latest])}
+    anchors = sorted(cur, key=lambda k: -(cur[k]["tvl"] or 0))[:10]
     draws = []
-    for s in sorted(peak, key=lambda s: -peak[s][0])[:10]:
-        p, pd = peak[s]
-        c = cur.get(s, {})
-        draws.append({"slug": s, "name": s, "peak": p, "peak_date": pd, "current": c.get("tvl"),
-                      "source": c.get("source", "missing"), "disputed": c.get("disputed", False),
-                      "drawdown": (c["tvl"] / p - 1) * 100 if c.get("tvl") else None})
+    for iss in anchors:
+        now_rows = [r for r in yb[latest] if r["issuer"] == iss]
+        worst = None
+        for d in dates[:-1]:
+            then_rows = [r for r in yb[d] if r["issuer"] == iss]
+            lfl = _lfl(then_rows, now_rows)
+            if lfl["from"] and lfl["coverage_pct"] >= MIN_PANEL_COVERAGE:
+                if worst is None or lfl["change_pct"] < worst[0]:
+                    worst = (lfl["change_pct"], d, lfl["from"], lfl["to"])
+        draws.append({"slug": iss, "name": iss, "current": cur[iss]["tvl"], "source": cur[iss]["source"],
+                      "disputed": cur[iss]["disputed"],
+                      "drawdown": worst[0] if worst else None, "peak_date": worst[1] if worst else None,
+                      "peak": worst[2] if worst else None})
     draws.sort(key=lambda x: (x["drawdown"] if x["drawdown"] is not None else 0))
     hit = next((d for d in draws if d["drawdown"] is not None and d["drawdown"] <= -50 and not d["disputed"]), None)
 
@@ -431,21 +486,31 @@ def page_watching(con):
         "latest": latest,
         "watches": [
             {"id": "01", "title": "A non-Treasury category breaks out",
-             "rule": "Any asset class other than Treasuries & MMFs above 5% of yield-bearing value with at least 5× growth since the first snapshot.",
-             "triggered": w1,
+             "rule": "Any asset class other than Treasuries & MMFs above 5% of yield-bearing value, with at least 5× like-for-like growth since the first weekly snapshot.",
+             "status": w1,
              "reading": (f"Largest: {lead[0]} at {lead[2]:.1f}% share"
-                         + (f", {lead[3]:.2f}× since {dh['first']}" if lead[3] else "")) if lead else "—",
+                         + (f", {lead[3]:.2f}× like-for-like since {dh['first']}" if lead[3] else "")) if lead else "—",
              "table": [{"name": c[0], "tvl": c[1], "share": c[2], "multiple": c[3]} for c in cand[:6]]},
             {"id": "02", "title": "Ethereum's share drops below 70%",
-             "rule": f"Ethereum's share of RWA value measured on-chain, chain by chain ({dh['chain_coverage']:.0f}% of the yield-bearing total is measured this way so far).",
-             "triggered": eth is not None and eth < 70,
-             "reading": f"Ethereum at {eth:.1f}%" if eth is not None else "No on-chain reads yet",
-             "series": dh["eth_series"]},
-            {"id": "03", "title": "Another anchor shrinks at Usual USD0 scale",
-             "rule": "Any of the 10 largest issuers (by peak in the window) down 50% or more from its peak.",
-             "triggered": hit is not None,
-             "reading": (f"{hit['name']} {hit['drawdown']:.0f}% from its {hit['peak_date']} peak" if hit
-                         else "No anchor is down 50%+ from its peak"),
+             "rule": f"Ethereum's share of yield-bearing value read on-chain, chain by chain. Fires only once at least {MIN_CHAIN_COVERAGE}% of value is read this way, over {MIN_CHAIN_READS}+ weekly reads.",
+             "status": w2, "reading": w2_read, "series": dh["eth_series"]},
+            {"id": "03", "title": "An anchor issuer halves",
+             "rule": f"Any of the 10 largest issuers down 50% or more, like-for-like (same assets, same source) against any earlier weekly snapshot covering at least {MIN_PANEL_COVERAGE}% of its value.",
+             "status": "triggered" if hit else "clear",
+             "reading": (f"{hit['name']} {hit['drawdown']:.0f}% like-for-like since {hit['peak_date']}" if hit
+                         else "No anchor issuer is down 50%+ like-for-like"),
              "table": draws},
         ],
     }
+
+
+def page_reference(con):
+    """Every asset counted, with the value used and its source (latest snapshot)."""
+    rows = universe(con)
+    al = _by_date(rows, False, include_stocks=True)
+    latest = list(al)[-1]
+    assets = sorted((r for r in al[latest] if r["tvl"]), key=lambda r: -r["tvl"])
+    return {"latest": latest,
+            "assets": [{"name": r["name"], "issuer": r["issuer"], "category": r["category"],
+                        "chain": r["first_chain"], "tvl": r["tvl"], "source": r["source"],
+                        "disputed": r["disputed"]} for r in assets]}

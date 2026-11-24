@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RWA Pulse · local data</title>
+<title>RWA Pulse — tokenised real-world asset market structure</title>
+<meta name="description" content="Independent weekly read on tokenised real-world asset market structure: size, concentration, chains and pre-registered watch rules, with every source shown.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -90,6 +91,8 @@
   .section { margin: 26px 0 8px; } .section h2 { font-family: var(--serif); font-weight: 600; font-size: 22px; margin: 0 0 4px; }
   .stat-row { display: flex; gap: 26px; flex-wrap: wrap; margin: 8px 0 14px; } .stat-row div { font-family: var(--mono); } .stat-row small { display: block; color: var(--muted); font-family: var(--sans); font-size: 12px; }
   code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; max-width: 980px; }
+  .foot p { margin: 0 0 8px; } .foot a { color: var(--muted); text-decoration: underline; }
 
   /* ── Phones and small tablets ───────────────────────────────────────────── */
   @media (max-width: 760px) {
@@ -254,12 +257,12 @@ function spark(points, color="var(--teal)") {
   const d = p.map((q, i) => (i ? "L" : "M") + ((xs[i]-x0)/(x1-x0||1)*W).toFixed(1) + "," + (H-2-(q[1]-y0)/(y1-y0||1)*(H-4)).toFixed(1)).join("");
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:48px"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.6"/></svg>`;
 }
-const SRC = { "defillama": ["DefiLlama", ""], "onchain": ["On-chain supply × price", "teal"],"coingecko": ["CoinGecko market cap", "gold"], "centrifuge subgraph": ["Centrifuge subgraph", "teal"],
+const SRC = { "defillama": ["DefiLlama", ""], "onchain": ["On-chain supply × price", "teal"], "onchain-partial": ["On-chain (partial chains)", "gold"],"coingecko": ["CoinGecko market cap", "gold"], "centrifuge subgraph": ["Centrifuge subgraph", "teal"],
               "missing": ["not reported", "red"], "mixed": ["multiple sources", ""], "defillama → centrifuge subgraph": ["DefiLlama → subgraph", "teal"] };
 const srcPill = (s, disputed) => { const [l, c] = SRC[s] || [s, ""];
   return `<span class="pill src-${c}">${esc(l)}</span>` + (disputed ? ` <span class="pill src-red" title="DefiLlama and the token's market cap differ by more than 50%">sources disagree</span>` : ""); };
 function coverageNote(cov, date, notes) {
-  const p = cov.pct || {}, f = k => (p[k] || 0).toFixed(0) + "%";
+  const p = cov.pct || {}, f = k => (k === "onchain" ? (p.onchain || 0) + (p["onchain-partial"] || 0) : (p[k] || 0)).toFixed(0) + "%";
   return `<div class="banner"><b>How this is measured.</b> Asset by asset, grouped by issuer — the way DefiLlama's RWA dashboard now counts.
     Of the ${compact(cov.total, true)} on ${esc(date)}: ${f("onchain")} read on-chain (token supply × price, chain by chain), ${f("coingecko")} CoinGecko market cap,
     ${f("defillama")} DefiLlama protocol TVL (issuers with no token, e.g. Maple).${cov.missing ? ` Assets with no source this week (last seen at ${compact(cov.missing, true)}) are left out.` : ""}
@@ -277,10 +280,10 @@ let TABLES = [];
 function buildNav(tables) {
   const nav = $("#nav");
   const add = (html) => nav.insertAdjacentHTML("beforeend", html);
-  add(`<h4>RWA Intel</h4>` + [["overview","Overview"],["concentration","Concentration"],["roster","New Roster"],
+  add(`<h4>Pulse</h4>` + [["overview","Overview"],["concentration","Concentration"],["roster","New Roster"],
        ["didnt-happen","What Didn't Happen"],["reference","Reference"],["watching","What We're Watching"]]
        .map(([k, l]) => `<button data-r="${k}">${l}</button>`).join(""));
-  add(`<h4>Data</h4><button data-r="health">Data health</button>`);
+  if (!STATIC) add(`<h4>Data</h4><button data-r="health">Data health</button>`);
   if (STATIC) {
     nav.addEventListener("click", e => { const b = e.target.closest("button[data-r]"); if (b) location.hash = b.dataset.r; });
     return;
@@ -302,153 +305,156 @@ function route() {
   document.querySelector("nav button.active")?.scrollIntoView({ inline: "center", block: "nearest" });
   const pages = { overview: pOverview, concentration: pConcentration, roster: pRoster,
                   "didnt-happen": pDidnt, reference: pReference, watching: pWatching, health: overview };
+  if (STATIC && kind === "health") { location.hash = "overview"; return; }
   if (pages[kind]) return load(m, pages[kind]);
   if (kind === "view") return grid(m, "view", name);
   if (kind === "table") return grid(m, "table", name);
   if (kind === "sql") return sqlConsole(m);
 }
+const FOOTER = `<footer class="foot">
+  <p><b>Data:</b> <a href="https://www.coingecko.com/en/api" target="_blank" rel="noopener">Powered by CoinGecko</a> ·
+  protocol TVL from <a href="https://defillama.com" target="_blank" rel="noopener">DefiLlama</a> ·
+  token supply read from public blockchains · Centrifuge subgraph.
+  <a href="https://github.com/danpereira88/rwapulse/blob/main/docs/methodology.md" target="_blank" rel="noopener">Methodology</a> ·
+  <a href="https://github.com/danpereira88/rwapulse" target="_blank" rel="noopener">Source code</a></p>
+  <p>Not investment advice. Figures are estimates from third-party and on-chain data and may be wrong or incomplete; check primary sources before relying on them.
+  Issuer and product names are used for identification only and imply no endorsement or affiliation.
+  RWA Pulse is a personal project by Danilo Pereira, not affiliated with or endorsed by any employer, issuer or data provider.</p>
+</footer>`;
 async function load(m, fn) {
   m.innerHTML = `<p class="muted">Loading…</p>`;
-  try { await fn(m); } catch (e) { m.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  try { await fn(m); m.insertAdjacentHTML("beforeend", FOOTER); }
+  catch (e) { m.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 const pctFmt = v => v.toFixed(0) + "%";
 const protoTable = (rows, {share=true} = {}) => `<table><thead><tr><th>#</th><th>Issuer</th><th>Asset class</th><th>Main chain</th><th class="num">TVL</th>${share?'<th class="num">Share</th>':""}<th>Source</th></tr></thead><tbody>
   ${rows.map((r, i) => `<tr><td class="muted">${i+1}</td><td>${esc(r.name)}</td><td class="muted">${esc(r.category)}</td><td class="muted">${esc(r.chain||"—")}</td><td class="num">${compact(r.tvl, true)}</td>${share?`<td class="num">${r.share.toFixed(1)}%</td>`:""}<td>${srcPill(r.source, r.disputed)}</td></tr>`).join("")}</tbody></table>`;
 
 // ── RWA Intel: Overview ──
+const lfl = c => c && c.change_pct != null ? `${pct(c.change_pct)} like-for-like` : "—";
 async function pOverview(m) {
   const o = await api("/api/page/overview");
-  const chg = (o.yield_total / o.yield_first - 1) * 100;
-  const b = o.baseline.yield;
+  const b = o.baseline.yield, c0 = o.change_since_first, c30 = o.change_30d;
+  const dir = c0 && c0.change_pct != null ? (c0.change_pct < 0 ? "smaller" : "larger") : null;
   m.innerHTML = `<div class="eyebrow">Market overview</div>
-    ${lede(`Yield-bearing tokenised assets grew ${(b.tvl_end/b.tvl_start).toFixed(0)}× in under two years, from ${compact(b.tvl_start, true)} to ${compact(b.tvl_end, true)} by May 2026. Since then the composition has moved almost as much as the total.`,
-      `Real-world asset TVL and category mix · weekly snapshots ${esc(o.first)} → ${esc(o.latest)} · yield-bearing = Treasuries & MMFs, credit and other RWAs; gold and tokenised stocks shown separately.`)}
+    ${lede(`Yield-bearing tokenised assets stand at ${compact(o.yield_total, true)} across ${o.n_protocols} issuers.`
+        + (dir ? ` Like for like, the market is ${Math.abs(c0.change_pct).toFixed(0)}% ${dir} than in mid-May.` : ""),
+      `Weekly snapshots ${esc(o.first)} → ${esc(o.latest)}. Yield-bearing = Treasuries & MMFs and private credit; gold, other RWAs and tokenised stocks are shown separately.`)}
     ${coverageNote(o.coverage, o.latest, o.notes)}
     <div class="kpis">
-      <div class="kpi"><div class="label">Yield-bearing RWA TVL</div><div class="value">${compact(o.yield_total, true)}</div><div class="note">${pct(chg)} since ${esc(o.first)}</div></div>
-      <div class="kpi"><div class="label">Incl. gold & commodities</div><div class="value">${compact(o.broad_total, true)}</div><div class="note">commodities ${compact(o.gold_total, true)}</div></div>
+      <div class="kpi"><div class="label">Yield-bearing RWA value</div><div class="value">${compact(o.yield_total, true)}</div><div class="note">${lfl(c0)} since ${esc(o.first)}</div></div>
+      <div class="kpi"><div class="label">Last ~30 days</div><div class="value">${c30 && c30.change_pct != null ? pct(c30.change_pct) : "—"}</div><div class="note">like-for-like, ${c30 ? c30.coverage_pct.toFixed(0) + "% of value comparable" : ""}</div></div>
+      <div class="kpi"><div class="label">Incl. gold, commodities & other</div><div class="value">${compact(o.broad_total, true)}</div><div class="note">of which ${compact(o.gold_total, true)}</div></div>
       <div class="kpi"><div class="label">All RWAs incl. stocks</div><div class="value">${compact(o.all_total, true)}</div><div class="note">tokenised stocks ${compact(o.stocks_total, true)}</div></div>
       <div class="kpi"><div class="label">Issuers / assets</div><div class="value">${o.n_protocols} / ${o.n_assets}</div><div class="note">yield-bearing universe</div></div>
-      <div class="kpi"><div class="label">Growth to May 2026 (published)</div><div class="value">${compact(b.tvl_start, true)} → ${compact(b.tvl_end, true)}</div><div class="note">${esc(b.tvl_start_date)} → ${esc(o.baseline.as_of)} · yield-bearing</div></div>
     </div>
     <div class="grid2">
-      <div class="card"><h3>Total TVL <small>weekly snapshots</small></h3>${multiLine([
-        {name: "Yield-bearing (reported + filled)", color: "var(--teal)", points: o.series.map(s => [s[0], s[1]])},
-        {name: "…if assets missing a source held their last value", color: "var(--teal)", dash: true, points: o.series.map(s => [s[0], s[3]])},
-        {name: "Broad, incl. gold", color: "var(--gold)", points: o.series.map(s => [s[0], s[2]])},
-      ])}</div>
+      <div class="card"><h3>Total value <small>weekly snapshots</small></h3>${multiLine([
+        {name: "Yield-bearing", color: "var(--teal)", points: o.series.map(s => [s[0], s[1]])},
+        {name: "…with assets missing a source held at their last value", color: "var(--teal)", dash: true, points: o.series.map(s => [s[0], s[3]])},
+        {name: "Incl. gold, commodities & other", color: "var(--gold)", points: o.series.map(s => [s[0], s[2]])},
+      ])}<p class="muted" style="font-size:12px">Week-to-week moves in this chart include changes of source and coverage; the like-for-like figures above don't.</p></div>
       <div class="card"><h3>Asset class mix <small>${esc(o.latest)} · all RWAs</small></h3>
         ${bars(o.categories.filter(c => c[1] > 1e6).map(c => [`${c[0]} · ${c[2].toFixed(1)}%`, c[1]]))}</div>
     </div>
-    <div class="card"><h3>Top issuers <small>${esc(o.latest)}</small></h3>${protoTable(o.top)}</div>`;
+    <div class="card"><h3>Top issuers <small>${esc(o.latest)}</small></h3>${protoTable(o.top)}</div>
+    <p class="muted" style="font-size:12px;margin-top:14px">Earlier study (May 2026, protocol-level method, not comparable with the figures above): yield-bearing RWA value grew from ${compact(b.tvl_start, true)} (${esc(b.tvl_start_date)}) to ${compact(b.tvl_end, true)} (${esc(o.baseline.as_of)}).</p>`;
 }
 
 // ── Concentration ──
 async function pConcentration(m) {
   const c = await api("/api/page/concentration"), b = c.baseline.yield, s = c.series, last = s.at(-1), first = s[0];
+  const up = last.top5_carry > first.top5_carry;
   m.innerHTML = `<div class="eyebrow">Market concentration</div>
-    ${lede("The market de-concentrated as it scaled: the top five went from three-quarters of TVL to about half in two years.",
-      "Top-5 share and HHI on the yield-bearing universe. The two-year figures come from the May 2026 analysis; the weekly series is computed live.")}
+    ${lede(`The five largest issuers hold ${last.top5.toFixed(0)}% of yield-bearing value, ${up ? "up" : "down"} from ${first.top5.toFixed(0)}% in mid-May.`,
+      `Top-5 share and HHI across issuers, weekly since ${esc(first.date)}. On the more conservative reading (assets missing a source held at their last value) it is ${last.top5_carry.toFixed(1)}%, ${up ? "up" : "down"} from ${first.top5_carry.toFixed(1)}%.`)}
     <div class="kpis">
-      <div class="kpi"><div class="label">Top-5 share, ${esc(b.start)}</div><div class="value">${b.top5_start.toFixed(1)}%</div><div class="note">HHI ${b.hhi_start.toLocaleString()}</div></div>
-      <div class="kpi"><div class="label">Top-5 share, ${esc(c.baseline.as_of)}</div><div class="value">${b.top5_end.toFixed(1)}%</div><div class="note">HHI ${b.hhi_end} · ${(b.top5_end-b.top5_start).toFixed(1)} pp</div></div>
-      <div class="kpi"><div class="label">Top-5 share, ${esc(last.date)}</div><div class="value">${last.top5.toFixed(1)}%</div><div class="note">${last.top5_carry.toFixed(1)}% if unreported held flat</div></div>
-      <div class="kpi"><div class="label">HHI, ${esc(last.date)}</div><div class="value">${Math.round(last.hhi).toLocaleString()}</div><div class="note">${Math.round(last.hhi_carry).toLocaleString()} if unreported held flat</div></div>
+      <div class="kpi"><div class="label">Top-5 share, ${esc(first.date)}</div><div class="value">${first.top5.toFixed(1)}%</div><div class="note">HHI ${Math.round(first.hhi).toLocaleString()}</div></div>
+      <div class="kpi"><div class="label">Top-5 share, ${esc(last.date)}</div><div class="value">${last.top5.toFixed(1)}%</div><div class="note">${(last.top5 - first.top5 >= 0 ? "+" : "") + (last.top5 - first.top5).toFixed(1)} pp</div></div>
+      <div class="kpi"><div class="label">HHI, ${esc(last.date)}</div><div class="value">${Math.round(last.hhi).toLocaleString()}</div><div class="note">${Math.round(last.hhi_carry).toLocaleString()} conservative</div></div>
     </div>
     ${coverageNote(c.coverage, c.latest)}
     <div class="grid2">
-      <div class="card"><h3>Top-5 share of TVL <small>weekly</small></h3>${multiLine([
-        {name: "Yield-bearing, reported + filled", color: "var(--teal)", points: s.map(x => [x.date, x.top5])},
-        {name: "…if assets missing a source held their last value", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.top5_carry])},
-        {name: "Broad, incl. gold", color: "var(--gold)", points: s.map(x => [x.date, x.top5_broad])},
-      ], {fmt: pctFmt, yMin0: false})}
-        <p class="muted" style="font-size:12px">Concentration is measured across issuers. The dashed line counts assets missing a source that week at their last known value.</p></div>
+      <div class="card"><h3>Top-5 share of value <small>weekly</small></h3>${multiLine([
+        {name: "Yield-bearing", color: "var(--teal)", points: s.map(x => [x.date, x.top5])},
+        {name: "…conservative (missing held at last value)", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.top5_carry])},
+        {name: "Incl. gold, commodities & other", color: "var(--gold)", points: s.map(x => [x.date, x.top5_broad])},
+      ], {fmt: pctFmt, yMin0: false})}</div>
       <div class="card"><h3>Who's in the top five</h3>
         <p class="muted" style="margin:0 0 4px">${esc(first.date)}</p><p>${c.roster_first.map(esc).join(" · ")}</p>
         <p class="muted" style="margin:14px 0 4px">${esc(last.date)}</p><p>${c.roster_latest.map(esc).join(" · ")}</p>
         <h3 style="margin-top:20px">HHI <small>weekly</small></h3>${multiLine([
-          {name: "Reported + filled", color: "var(--teal)", points: s.map(x => [x.date, x.hhi])},
-          {name: "Missing held at last value", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.hhi_carry])}],
+          {name: "Yield-bearing", color: "var(--teal)", points: s.map(x => [x.date, x.hhi])},
+          {name: "Conservative", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.hhi_carry])}],
           {height: 160, fmt: v => Math.round(v).toLocaleString(), yMin0: false})}</div>
     </div>
-    <div class="card"><h3>Top 10 today <small>${esc(c.latest)}</small></h3>${protoTable(c.top10)}</div>`;
+    <div class="card"><h3>Top 10 today <small>${esc(c.latest)}</small></h3>${protoTable(c.top10)}</div>
+    <p class="muted" style="font-size:12px;margin-top:14px">Earlier study (May 2026, protocol-level method, not comparable with the figures above): top-5 share fell from ${b.top5_start}% (${esc(b.start)}) to ${b.top5_end}% (${esc(c.baseline.as_of)}); HHI from ${b.hhi_start.toLocaleString()} to ${b.hhi_end}.</p>`;
 }
 
 // ── New Roster ──
 async function pRoster(m) {
   const r = await api("/api/page/roster");
-  m.innerHTML = `<div class="eyebrow">New roster</div>
-    ${lede("Six institutional products now lead the market, each a different bet on what tokenised assets are for.",
-      "Current size and 90-day trajectory from weekly snapshots — on-chain supply × price where available, otherwise CoinGecko market cap.")}
+  m.innerHTML = `<div class="eyebrow">The roster</div>
+    ${lede("Six institutional products the tokenised market benchmarks itself against, each a different bet on what tokenised assets are for.",
+      "Current size, and the change over up to 90 days measured the same way throughout (same source); when the source changed recently, the window is shorter.")}
     <div class="cards">${r.cards.map(c => `<div class="pcard">
       <div class="kind">${esc(c.kind)}</div><div class="nm">${esc(c.name)}</div><div class="par">${esc(c.parent)}</div>
       <div class="val">${compact(c.current, true)} <span style="font-size:13px">${c.change_90d == null ? "" : pct(c.change_90d)}</span></div>
-      <div class="muted" style="font-size:11px;font-family:var(--mono)">${esc(c.metric)} · ${esc(c.as_of || "")} · 90-day trajectory</div>
+      <div class="muted" style="font-size:11px;font-family:var(--mono)">${esc(c.as_of || "")} · ${c.change_90d == null ? "no like-for-like history yet" : "change since " + esc(c.change_from)}</div>
       ${spark(c.points, c.change_90d < 0 ? "var(--down)" : "var(--teal)")}
-      <div class="blurb">${esc(c.blurb)}</div><div>${srcPill(c.source)}</div></div>`).join("")}</div>
-    <p class="muted" style="margin-top:16px;font-size:12px">The profile pages these cards linked to (L1/L2/L3 scores, composite tier, editorial summary) lived in Supabase and were lost with it. Regenerate with <code>sync/gather_profile.py</code>.</p>`;
+      <div class="blurb">${esc(c.blurb)}</div><div>${srcPill(c.source)}</div></div>`).join("")}</div>`;
 }
 
 // ── What Didn't Happen ──
 async function pDidnt(m) {
   const d = await api("/api/page/didnt-happen"), b = d.baseline;
-  const eth = d.eth_series.at(-1)?.[1];
   m.innerHTML = `<div class="eyebrow">What didn't happen</div>
     ${lede("The narratives the field spent the year promoting are largely not visible in the data. Three of them, examined.")}
     <div class="section"><h2>1. The multichain rotation</h2>
-      <p class="desc">The claim: RWA issuance is moving off Ethereum. In the May analysis Ethereum's share of the yield-bearing universe went from ${b.eth_share.start}% to ${b.eth_share.end}% over two years: flat.</p>
-      <div class="grid2"><div class="card"><h3>Ethereum share <small>measured on-chain, chain by chain</small></h3>
-        ${multiLine([{name: "Ethereum", color: "var(--teal)", points: d.eth_series}], {fmt: pctFmt, yMin0: false, height: 200})}
-        <p class="muted" style="font-size:12px">Per-chain balances read from token contracts. Covers ${d.chain_coverage.toFixed(0)}% of yield-bearing value so far; this series started on 24 Nov 2026.</p></div>
-      <div class="card"><h3>Share by chain <small>${esc(d.latest)}</small></h3>
-        <table><thead><tr><th>Chain</th><th class="num">Share</th><th>Largest contributors</th></tr></thead><tbody>
-        ${d.chains.map(([c, s, dr]) => `<tr><td>${esc(c)}</td><td class="num">${s.toFixed(1)}%</td><td class="muted" style="white-space:normal">${dr.map(x => `${esc(x[0])} ${x[1].toFixed(1)}%`).join(", ")}</td></tr>`).join("")}
-        </tbody></table></div></div></div>
+      <p class="desc">The claim: RWA issuance is moving off Ethereum. The May 2026 study (protocol-level method) found Ethereum's share of yield-bearing value flat over two years, ${b.eth_share.start}% → ${b.eth_share.end}%.
+        From 24 Nov 2026 the share is measured directly, chain by chain, from token contracts — ${d.chain_coverage.toFixed(0)}% of value so far, ${d.chain_reads} weekly read(s). Too early to call a trend.</p>
+      <div class="card"><h3>Share by chain <small>value read on-chain, ${esc(d.latest)}</small></h3>
+        ${d.chain_coverage < d.chain_min_coverage ? `<p class="muted">Not shown yet: only ${d.chain_coverage.toFixed(0)}% of yield-bearing value has been read on-chain so far (shown from ${d.chain_min_coverage}%). A split this partial would mostly reflect which assets happen to be read, not where value sits.</p>` : d.chains.length ? `<table><thead><tr><th>Chain</th><th class="num">Share</th></tr></thead><tbody>${d.chains.map(([c, v]) => `<tr><td>${esc(c)}</td><td class="num">${v.toFixed(1)}%</td></tr>`).join("")}</tbody></table>` : `<p class="muted">No on-chain reads yet.</p>`}</div></div>
     <div class="section"><h2>2. The broadening beyond Treasuries</h2>
-      <p class="desc">The claim: private credit, real estate and other categories are taking share. The May analysis found no category other than RWA with both a 5%+ share and 5× growth.</p>
-      <div class="card"><table><thead><tr><th>Category</th><th class="num">TVL ${esc(d.latest)}</th><th class="num">Share</th><th class="num">Growth since ${esc(d.first)}</th></tr></thead><tbody>
-        ${d.categories.filter(c => c[1] > 1e6).map(c => `<tr><td>${esc(c[0])}</td><td class="num">${compact(c[1], true)}</td><td class="num">${c[2].toFixed(1)}%</td><td class="num">${c[3] == null ? "new" : c[3].toFixed(2) + "×"}</td></tr>`).join("")}
+      <p class="desc">The claim: private credit and other categories are taking share from Treasuries. Test: any class other than Treasuries & MMFs above 5% of yield-bearing value with 5× like-for-like growth since ${esc(d.first)}.</p>
+      <div class="card"><table><thead><tr><th>Asset class</th><th class="num">Value ${esc(d.latest)}</th><th class="num">Share</th><th class="num">Like-for-like since ${esc(d.first)}</th></tr></thead><tbody>
+        ${d.categories.filter(c => c[1] > 1e6).map(c => `<tr><td>${esc(c[0])}</td><td class="num">${compact(c[1], true)}</td><td class="num">${c[2].toFixed(1)}%</td><td class="num">${c[3] == null ? "—" : c[3].toFixed(2) + "×"} <span class="muted">(${c[4].toFixed(0)}% comparable)</span></td></tr>`).join("")}
       </tbody></table></div></div>
     <div class="section"><h2>3. The quiet giants</h2>
-      <p class="desc">The claim: a new generation of fast-growing issuers is about to break into the top tier. Test: outside today's top 10, at least 3× since ${esc(d.first)} and above $50M.</p>
-      <div class="card">${d.giants.length ? `<p><b>${d.giants.length} qualify.</b></p>${protoTable(d.giants, {share: false})}` :
-        `<p><b>None qualify.</b> The fastest risers outside the top 10:</p>`}
-        <table><thead><tr><th>Protocol</th><th class="num">${esc(d.first)}</th><th class="num">${esc(d.latest)}</th><th class="num">Multiple</th><th>Source</th></tr></thead><tbody>
+      <p class="desc">The claim: a new generation of fast-growing issuers is about to break into the top tier. Test: outside today's top 10, at least 3× like-for-like since ${esc(d.first)} and above $50M.</p>
+      <div class="card">${d.giants.length ? `<p><b>${d.giants.length} qualify.</b></p>` : `<p><b>None qualify.</b> The fastest risers outside the top 10:</p>`}
+        <table><thead><tr><th>Issuer</th><th class="num">${esc(d.first)}</th><th class="num">${esc(d.latest)}</th><th class="num">Multiple</th><th>Source</th></tr></thead><tbody>
         ${d.risers.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${compact(r.start, true)}</td><td class="num">${compact(r.tvl, true)}</td><td class="num">${r.multiple.toFixed(2)}×</td><td>${srcPill(r.source, r.disputed)}</td></tr>`).join("")}
         </tbody></table></div></div>`;
 }
 
 // ── Reference ──
 async function pReference(m) {
-  const [p, t] = await Promise.all([api("/api/view?name=protocols&limit=500&sort=tvl_usd"), api("/api/view?name=tokens&limit=500&sort=market_cap_usd")]);
-  const ci = (r, name) => r.columns.indexOf(name);
-  m.innerHTML = `<div class="eyebrow">Reference</div>${lede("Reference data for the protocols and tokens covered in the analysis above.")}
-    <div class="card" style="margin-bottom:16px"><h3>Protocols <small>${p.total} · latest snapshot</small></h3><div class="tablewrap" style="max-height:50vh">
-    <table><thead><tr><th>Protocol</th><th>Category</th><th>Chains</th><th class="num">TVL</th><th class="num">1d</th><th class="num">7d</th><th class="num">30d</th></tr></thead><tbody>
-    ${p.rows.map(r => `<tr><td>${esc(r[ci(p,"name")])}</td><td class="muted">${esc(r[ci(p,"category")])}</td><td class="muted" title="${esc(r[ci(p,"chains")])}">${esc((r[ci(p,"chains")]||"").split(",").slice(0,3).join(", "))}</td>${cell("tvl_usd", r[ci(p,"tvl_usd")])}${cell("change_1d_pct", r[ci(p,"change_1d_pct")])}${cell("change_7d_pct", r[ci(p,"change_7d_pct")])}${cell("change_1m_pct", r[ci(p,"change_1m_pct")])}</tr>`).join("")}
-    </tbody></table></div><p class="muted" style="font-size:12px">"—" TVL means DefiLlama returned no value for that protocol on the latest snapshot.</p></div>
-    <div class="card"><h3>Tokens <small>${t.total} tracked</small></h3>
-    <table><thead><tr><th>Token</th><th>Symbol</th><th class="num">Price</th><th class="num">Market cap</th><th class="num">24h</th><th class="num">7d</th><th class="num">30d</th></tr></thead><tbody>
-    ${t.rows.map(r => `<tr><td>${esc(r[ci(t,"display_name")])}</td><td class="muted">${esc(r[ci(t,"symbol")])}</td>${cell("current_price_usd", r[ci(t,"current_price_usd")])}${cell("market_cap_usd", r[ci(t,"market_cap_usd")])}${cell("price_change_pct_24h", r[ci(t,"price_change_pct_24h")])}${cell("price_change_pct_7d", r[ci(t,"price_change_pct_7d")])}${cell("price_change_pct_30d", r[ci(t,"price_change_pct_30d")])}</tr>`).join("")}
+  const r = await api("/api/page/reference");
+  m.innerHTML = `<div class="eyebrow">Reference</div>${lede("Every asset counted on this site, with the value used and where it came from.", `As of ${esc(r.latest)}. ${r.assets.length} assets.`)}
+    <div class="card"><table><thead><tr><th>Asset</th><th>Issuer</th><th>Asset class</th><th>Main chain</th><th class="num">Value</th><th>Source</th></tr></thead><tbody>
+    ${r.assets.map(a => `<tr><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="muted">${esc(a.chain || "—")}</td><td class="num">${compact(a.tvl, true)}</td><td>${srcPill(a.source, a.disputed)}</td></tr>`).join("")}
     </tbody></table>
-    <p class="muted" style="font-size:12px">Note: yield-bearing tokens (USDY, OUSG, USYC, USTB) report oracle NAVs, not secondary-market prices. PAXG and XAUT reflect market prices for gold-backed tokens.</p></div>`;
+    <p class="muted" style="font-size:12px">Yield-bearing funds (USDY, OUSG, USYC, USTB…) are valued at their reported NAV, not a secondary-market price. Gold tokens use market prices.</p></div>`;
 }
 
 // ── What We're Watching ──
+const STATUS = { triggered: ["TRIGGERED", "on"], clear: ["not triggered", "off"], insufficient: ["not enough data", ""] };
 async function pWatching(m) {
   const w = await api("/api/page/watching");
   const body = x => {
-    if (x.id === "01") return `<table><thead><tr><th>Category</th><th class="num">Share</th><th class="num">Growth</th></tr></thead><tbody>${x.table.filter(r => r.tvl > 1e6).map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.share.toFixed(1)}%</td><td class="num">${r.multiple == null ? "new" : r.multiple.toFixed(2) + "×"}</td></tr>`).join("")}</tbody></table>`;
-    if (x.id === "02") return multiLine([{name: "Ethereum share (measured on-chain)", color: "var(--teal)", points: x.series}], {fmt: pctFmt, yMin0: false, height: 180, marker: {date: x.series[0]?.[0] || "2026-11-24", label: "", hline: 70}});
-    return `<table><thead><tr><th>Protocol</th><th class="num">Peak</th><th>Peak date</th><th class="num">Now</th><th class="num">From peak</th><th>Source</th></tr></thead><tbody>${x.table.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${compact(r.peak, true)}</td><td class="muted">${esc(r.peak_date)}</td><td class="num">${compact(r.current, true)}</td><td class="num">${r.drawdown == null ? "—" : pct(r.drawdown)}</td><td>${srcPill(r.source, r.disputed)}</td></tr>`).join("")}</tbody></table>`;
+    if (x.id === "01") return `<table><thead><tr><th>Asset class</th><th class="num">Share</th><th class="num">Like-for-like growth</th></tr></thead><tbody>${x.table.filter(r => r.tvl > 1e6).map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.share.toFixed(1)}%</td><td class="num">${r.multiple == null ? "—" : r.multiple.toFixed(2) + "×"}</td></tr>`).join("")}</tbody></table>`;
+    if (x.id === "02") return x.series.length > 1 ? multiLine([{name: "Ethereum share (measured on-chain)", color: "var(--teal)", points: x.series}], {fmt: pctFmt, yMin0: false, height: 180}) : "";
+    return `<table><thead><tr><th>Issuer</th><th class="num">Now</th><th class="num">Worst like-for-like change</th><th>Since</th><th>Source</th></tr></thead><tbody>${x.table.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${compact(r.current, true)}</td><td class="num">${r.drawdown == null ? "—" : pct(r.drawdown)}</td><td class="muted">${esc(r.peak_date || "—")}</td><td>${srcPill(r.source, r.disputed)}</td></tr>`).join("")}</tbody></table>`;
   };
   m.innerHTML = `<div class="eyebrow">What we're watching</div>
-    ${lede("Three developments that would change the story if they happened. Each is checked against the latest snapshot.", `As of ${esc(w.latest)}.`)}
-    ${w.watches.map(x => `<div class="watch"><div class="wid">WATCH ${x.id}</div>
+    ${lede("Three developments that would change the story if they happened. The rules are written down before the data comes in, and checked every week.", `As of ${esc(w.latest)}.`)}
+    ${w.watches.map(x => { const [lbl, cls] = STATUS[x.status] || [x.status, ""]; return `<div class="watch"><div class="wid">WATCH ${x.id}</div>
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap"><h2>${esc(x.title)}</h2>
-      <span class="status ${x.triggered ? "on" : "off"}">${x.triggered ? "TRIGGERED" : "not triggered"}</span></div>
-      <p class="desc" style="margin-bottom:8px">${esc(x.rule)}</p><p><b>${esc(x.reading)}</b></p>${body(x)}</div>`).join("")}
-    <p class="muted" style="font-size:12px">Watch 02 uses per-chain balances read from token contracts, which only began on 24 Nov 2026 and don't yet cover every chain. On Watch 03, "sources disagree" rows are excluded from the trigger.</p>`;
+      <span class="status ${cls}">${lbl}</span></div>
+      <p class="desc" style="margin-bottom:8px">${esc(x.rule)}</p><p><b>${esc(x.reading)}</b></p>${body(x)}</div>`; }).join("")}
+    <p class="muted" style="font-size:12px">Every change on this page is like-for-like: only assets valued at both dates from the same source count, so a change of data source can't trigger a watch.</p>`;
 }
 
 // ── Data health (previous overview) ──

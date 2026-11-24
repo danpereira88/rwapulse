@@ -78,7 +78,7 @@ EVM_RPCS = {
 }
 SOLANA_RPCS = ["https://api.mainnet-beta.solana.com", "https://solana-rpc.publicnode.com"]
 STELLAR_HORIZON = "https://horizon.stellar.org"
-XRPL_RPCS = ["https://xrplcluster.com", "https://s1.ripple.com:51234"]
+XRPL_RPCS = ["https://xrplcluster.com"]
 APTOS_API = "https://api.mainnet.aptoslabs.com/v1"
 SUI_RPCS = ["https://fullnode.mainnet.sui.io:443"]
 
@@ -194,8 +194,6 @@ def xrpl_supply(address: str, symbol: str = "") -> float:
                   [{"account": issuer, "ledger_index": "validated", "strict": True}])
     obl = res.get("obligations") or {}
     hits = [float(v) for k, v in obl.items() if currency and _xrpl_currency_matches(k, currency)]
-    if not hits and len(obl) == 1:
-        hits = [float(v) for v in obl.values()]
     if not hits:
         raise ValueError(f"currency {currency!r} not issued by {issuer}")
     return sum(hits)
@@ -236,7 +234,7 @@ def read_supply(platform: str, address: str, decimals: Optional[int],
             return solana_supply(address), "ok"
         if platform == "stellar":
             return stellar_supply(address, symbol), "ok"
-        if platform in ("xrp", "xrpl", "ripple"):
+        if platform in ("xrp", "xrpl"):
             return xrpl_supply(address, symbol), "ok"
         if platform == "aptos":
             return aptos_supply(address, decimals), "ok"

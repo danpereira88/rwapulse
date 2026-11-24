@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import logging
+import sys
 import time
 from pathlib import Path
 
@@ -116,6 +117,12 @@ def main():
     report_path = Path("reports/inventory.md")
     if report_path.exists():
         log.info(f"\nInventory report: {report_path.resolve()}")
+
+    # Report failure honestly so the weekly job doesn't publish a half-built snapshot
+    failed = [n for n, r in summary.items() if r.get("status") == "error"]
+    if failed:
+        log.error(f"Steps failed: {', '.join(failed)} — exiting with status 1")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

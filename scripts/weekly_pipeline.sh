@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # weekly_pipeline.sh — Full RWA Pulse pipeline
 #
-# Runs every Monday 06:00 via launchd (com.rwapulse.weekly-pipeline).
+# Runs weekly via launchd (see the plist for the schedule) (com.rwapulse.weekly-pipeline).
 # Sequence:
 #   1. DuckDB ingestion + Supabase TVL/token sync  (run_all_with_sync.py)
 #   2. On-chain activity enrichment                (run_enrichment.py)
@@ -97,8 +97,12 @@ PYEOF
 
 # ── Step 4: publish the static dashboard (GitHub → Vercel) ───────────────────
 # Skips itself if this folder isn't a git repo with an origin remote.
-_log "Step 4: publish static dashboard"
-"${ROOT}/scripts/publish_site.sh" >> "${LOG}" 2>&1 || _log "WARNING: publish_site failed (see log)"
+if [[ "${PIPELINE_STATUS}" == "ok" ]]; then
+    _log "Step 4: publish static dashboard"
+    "${ROOT}/scripts/publish_site.sh" >> "${LOG}" 2>&1 || _log "WARNING: publish_site refused or failed (see log)"
+else
+    _log "Step 4: NOT publishing — pipeline status is ${PIPELINE_STATUS}; the live site keeps last week's snapshot"
+fi
 
 _log "========================================================"
 _log "Weekly pipeline complete (status: ${PIPELINE_STATUS})"
