@@ -335,13 +335,13 @@ async function pOverview(m) {
     <div class="grid2">
       <div class="card"><h3>Total TVL <small>weekly snapshots</small></h3>${multiLine([
         {name: "Yield-bearing (reported + filled)", color: "var(--teal)", points: o.series.map(s => [s[0], s[1]])},
-        {name: "…if unreported protocols held their last value", color: "var(--teal)", dash: true, points: o.series.map(s => [s[0], s[3]])},
+        {name: "…if assets missing a source held their last value", color: "var(--teal)", dash: true, points: o.series.map(s => [s[0], s[3]])},
         {name: "Broad, incl. gold", color: "var(--gold)", points: o.series.map(s => [s[0], s[2]])},
       ])}</div>
-      <div class="card"><h3>Category mix <small>${esc(o.latest)} · DefiLlama categories</small></h3>
+      <div class="card"><h3>Asset class mix <small>${esc(o.latest)} · all RWAs</small></h3>
         ${bars(o.categories.filter(c => c[1] > 1e6).map(c => [`${c[0]} · ${c[2].toFixed(1)}%`, c[1]]))}</div>
     </div>
-    <div class="card"><h3>Top protocols <small>${esc(o.latest)}</small></h3>${protoTable(o.top)}</div>`;
+    <div class="card"><h3>Top issuers <small>${esc(o.latest)}</small></h3>${protoTable(o.top)}</div>`;
 }
 
 // ── Concentration ──
@@ -360,7 +360,7 @@ async function pConcentration(m) {
     <div class="grid2">
       <div class="card"><h3>Top-5 share of TVL <small>weekly</small></h3>${multiLine([
         {name: "Yield-bearing, reported + filled", color: "var(--teal)", points: s.map(x => [x.date, x.top5])},
-        {name: "…if unreported protocols held their last value", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.top5_carry])},
+        {name: "…if assets missing a source held their last value", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.top5_carry])},
         {name: "Broad, incl. gold", color: "var(--gold)", points: s.map(x => [x.date, x.top5_broad])},
       ], {fmt: pctFmt, yMin0: false})}
         <p class="muted" style="font-size:12px">Concentration is measured across issuers. The dashed line counts assets missing a source that week at their last known value.</p></div>
@@ -369,7 +369,7 @@ async function pConcentration(m) {
         <p class="muted" style="margin:14px 0 4px">${esc(last.date)}</p><p>${c.roster_latest.map(esc).join(" · ")}</p>
         <h3 style="margin-top:20px">HHI <small>weekly</small></h3>${multiLine([
           {name: "Reported + filled", color: "var(--teal)", points: s.map(x => [x.date, x.hhi])},
-          {name: "Unreported held flat", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.hhi_carry])}],
+          {name: "Missing held at last value", color: "var(--teal)", dash: true, points: s.map(x => [x.date, x.hhi_carry])}],
           {height: 160, fmt: v => Math.round(v).toLocaleString(), yMin0: false})}</div>
     </div>
     <div class="card"><h3>Top 10 today <small>${esc(c.latest)}</small></h3>${protoTable(c.top10)}</div>`;
