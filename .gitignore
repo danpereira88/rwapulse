@@ -1,0 +1,25 @@
+# Secrets and environment
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local database (rebuilt by the pipeline)
+data/*.duckdb
+data/*.duckdb.wal
+
+# Private research — this repo is public. Keep these local only.
+# Scraped forum posts (contain third-party emails)
+data/raw_docs.json
+# Customer-discovery outreach notes
+data/validation_pack.*
+data/opportunity_briefs.json
+# Unpublished drafting notes and evidence packs
+reports/
+logs/
+
+# Backups
+*.bak-*
+
+# site/ IS committed: it's the static dashboard snapshot Vercel serves

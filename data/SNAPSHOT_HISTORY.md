@@ -1,0 +1,3 @@
+# Snapshot History
+
+Append mode for snapshot tables began on **2026-05-15**. All snapshot tables (those with a `snapshot_date` column) contain a `pre-append` cohort representing a single ingest run from the day before — exact timestamp unknown, treat it as 2026-05-14 at best. Any analysis that makes historical claims about snapshot-derived metrics (token supply, pool TVL, loan counts, market caps, APYs, contract state) should anchor its "since" date to **2026-05-15** to be safe; earlier rows exist but cannot be reliably dated or sequenced. The true time-series tables — `dl_protocol_tvl`, `dl_stablecoin_history` — are unaffected: they have always carried full date-stamped history from their upstream APIs and can be cited back to their earliest dates without this caveat.
