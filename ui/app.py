@@ -351,7 +351,8 @@ class Handler(BaseHTTPRequestHandler):
                   "/api/page/watching": lambda c, q: clean(insights.page_watching(c)),
                   "/api/page/reference": lambda c, q: clean(insights.page_reference(c)),
                   "/api/page/solana": lambda c, q: clean(insights.page_chain(c, "solana")),
-                  "/api/page/ethereum": lambda c, q: clean(insights.page_chain(c, "ethereum"))}
+                  "/api/page/ethereum": lambda c, q: clean(insights.page_chain(c, "ethereum")),
+                  "/api/page/compare": lambda c, q: clean(insights.page_compare(c))}
         try:
             if u.path == "/api/csv":
                 return self.csv(qs)

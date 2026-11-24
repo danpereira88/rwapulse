@@ -728,3 +728,90 @@ def _sweep_disputed(cid, r):
 def _chain_benchmark():
     from chain_benchmark import benchmark
     return benchmark()
+
+
+# ── Solana vs Ethereum ───────────────────────────────────────────────────────
+# Every finding is computed from this week's chain sweeps, so the text stays
+# true as the numbers move. DeFi-use figures come from the dated benchmark
+# (ui/chain_benchmark.py) and say so.
+
+def page_compare(con):
+    s, e = page_chain(con, "solana"), page_chain(con, "ethereum")
+    b = _chain_benchmark()
+    bs, be = b["solana"], b["ethereum"]
+    si, ei = s.get("inventory") or {}, e.get("inventory") or {}
+    ready = bool(si and ei)
+
+    def by_class(p):
+        return {c[0]: c[1] for c in p["classes"]}
+    sc, ec = by_class(s), by_class(e)
+    classes = []
+    for lbl in sorted(set(sc) | set(ec), key=lambda k: -(sc.get(k, 0) + ec.get(k, 0))):
+        sv, ev = sc.get(lbl, 0), ec.get(lbl, 0)
+        classes.append({"name": lbl, "solana": sv, "ethereum": ev,
+                        "solana_share": sv / (sv + ev) * 100 if sv + ev else None})
+
+    def pct(a, t):
+        return a / t * 100 if t else None
+
+    def ratio(a, b_):
+        return a / b_ if b_ else None
+
+    stocks = next((c for c in classes if c["name"].startswith("Tokenised stocks")), None)
+    funds = next((c for c in classes if c["name"].startswith("Treasuries")), None)
+    gold = next((c for c in classes if c["name"].startswith("Gold")), None)
+    credit = next((c for c in classes if c["name"].startswith("Private")), None)
+    top3 = lambda p: sum(x[2] for x in p["issuers"][:3])
+    avg_s = s["total"] / bs["holders"] if bs["holders"] else None
+    avg_e = e["total"] / be["holders"] if be["holders"] else None
+
+    f = []
+    if ready:
+        r_meas = ratio(e['total'], s['total'])
+        f.append({"key": "scale", "title": f"Ethereum is {r_meas:.1f}× Solana" + (f", not {b['value_x']:.1f}×" if r_meas > 1.3 * b['value_x'] else ""),
+                  "body": f"Measured on-chain, Ethereum holds ${e['total']/1e9:.2f}B of tokenised assets and Solana "
+                          f"${s['total']/1e9:.2f}B. rwa.xyz shows ${be['value']/1e9:.1f}B vs ${bs['value']/1e9:.1f}B ({b['as_of']})"
+                          + (" — a narrower gap, because it counts Solana's unsold issuer inventory." if r_meas > 1.3 * b['value_x'] else ".")})
+        f.append({"key": "inventory", "title": f"{pct(si['held'], si['minted']):.0f}% of what's minted on Solana is still with the issuers",
+                  "body": f"${si['held']/1e9:.2f}B of ${si['minted']/1e9:.2f}B minted on Solana sits in the issuers' own wallets, "
+                          f"against {pct(ei['held'], ei['minted']):.0f}% (${ei['held']/1e9:.2f}B) on Ethereum. "
+                          + ("Issuers list on Solana ahead of demand; a listing there signals availability, not usage."
+                             if pct(si['held'], si['minted']) > 2 * (pct(ei['held'], ei['minted']) or 0) else "")})
+    if stocks and 35 <= (stocks["solana_share"] or 0) <= 65:
+        f.append({"key": "stocks", "title": "Tokenised stocks are the one place Solana matches Ethereum",
+                  "body": f"${stocks['solana']/1e6:,.0f}M of tokenised stocks on Solana vs ${stocks['ethereum']/1e6:,.0f}M on Ethereum "
+                          f"({stocks['solana_share']:.0f}% on Solana), while Solana is a fraction of Ethereum overall."})
+    if funds and gold and funds["ethereum"] > 2 * funds["solana"] and gold["ethereum"] > 2 * gold["solana"]:
+        f.append({"key": "funds", "title": "Funds and gold live on Ethereum",
+                  "body": f"Treasuries & MMFs: ${funds['ethereum']/1e9:.2f}B on Ethereum vs ${funds['solana']/1e9:.2f}B on Solana "
+                          f"({ratio(funds['ethereum'], funds['solana']) or 0:.0f}×). Gold & commodities: ${gold['ethereum']/1e9:.2f}B vs "
+                          f"${gold['solana']/1e6:,.0f}M."
+                          + (f" Credit is closer: ${credit['ethereum']/1e6:,.0f}M vs ${credit['solana']/1e6:,.0f}M, "
+                             "much of Solana's from one DeFi-native issuer (OnRe)." if credit else "")})
+    if avg_s and avg_e:
+        f.append({"key": "reach", "title": f"Solana reaches {b['holders_x']:.1f}× the wallets with ~{avg_e/avg_s:.0f}× smaller holdings",
+                  "body": f"{bs['holders']/1e6:.2f}M RWA holders on Solana vs {be['holders']/1e3:,.0f}K on Ethereum (rwa.xyz, {b['as_of']}). "
+                          f"Measured value per holder: ${avg_s:,.0f} on Solana, ${avg_e:,.0f} on Ethereum. Solana is where small "
+                          "holders are; Ethereum is where the money is."})
+    f.append({"key": "defi", "title": "Solana puts more of its RWAs to work in DeFi",
+              "body": f"{bs['defi_share']:.1f}% of Solana's active RWA value is used in DeFi vs {be['defi_share']:.1f}% on Ethereum "
+                      f"(DefiLlama, {b['as_of']}). DeFi-native products drive it: OnRe, Huma and Hastra run at 84–91%. "
+                      "Institutional funds on Solana mostly sit idle (BUIDL: 0.65%)."})
+    f.append({"key": "concentration", "title": f"Solana's base is narrower: top three issuers hold {top3(s):.0f}%",
+              "body": f"Solana: {', '.join(x[0] for x in s['issuers'][:3])} ({top3(s):.0f}%). Ethereum: "
+                      f"{', '.join(x[0] for x in e['issuers'][:3])} ({top3(e):.0f}%). One issuer's decisions can move Solana's total."})
+
+    verdict = ("Solana is a real distribution channel for tokenised stocks and DeFi-native credit — small tickets, many "
+               "wallets, heavy DeFi use. For funds, gold and institutional money, Ethereum leads by a wide margin.")
+    return {
+        "as_of": s["latest"], "sweep_date": s.get("sweep_date"), "eth_sweep_date": e.get("sweep_date"), "ready": ready,
+        "solana": {"counted": s["total"], "minted": si.get("minted"), "held": si.get("held"),
+                   "circulating": si.get("circulating"), "tokens": s["n_tokens"], "holders": bs["holders"],
+                   "avg_holding": avg_s, "defi_share": bs["defi_share"], "issuers": s["issuers"][:5]},
+        "ethereum": {"counted": e["total"], "minted": ei.get("minted"), "held": ei.get("held"),
+                     "circulating": ei.get("circulating"), "tokens": e["n_tokens"], "holders": be["holders"],
+                     "avg_holding": avg_e, "defi_share": be["defi_share"], "issuers": e["issuers"][:5]},
+        "ratio": ratio(e["total"], s["total"]), "rwaxyz_ratio": b["value_x"],
+        "classes": classes, "findings": f, "verdict": verdict,
+        "benchmark": b, "both": s.get("both") or [], "measured": s.get("measured"),
+    }

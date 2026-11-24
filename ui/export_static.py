@@ -42,6 +42,7 @@ def main():
         write("page-reference", insights.page_reference(con))
         write("page-solana", insights.page_chain(con, "solana"))
         write("page-ethereum", insights.page_chain(con, "ethereum"))
+        write("page-compare", insights.page_compare(con))
         # No raw table dumps (CoinGecko/DefiLlama tables) on the public site — only
         # the derived editorial pages above. See README "Data sources and terms".
         for stale in ("overview", "view-protocols", "view-tokens"):

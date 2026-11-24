@@ -81,6 +81,10 @@
   .dual .b, .key { display: inline-block; height: 7px; border-radius: 3px; min-width: 2px; }
   .key { width: 14px; vertical-align: middle; }
   .dual .v, .key.v { background: var(--teal); }
+  .dual .sol, .key.sol { background: #9b7bff; }
+  .dual .eth, .key.eth { background: #7aa7ff; }
+  ol.findings { margin: 0; padding-left: 20px; line-height: 1.55; }
+  ol.findings li { margin: 0 0 10px; }
   .dual .h, .key.h { background: var(--gold); }
   tr.hl td { background: rgba(255,255,255,0.04); }
   .banner { border: 1px solid #5a4a22; background: #1d1a0f; color: #e8dcb6; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 18px; max-width: 980px; }
@@ -290,7 +294,7 @@ function buildNav(tables) {
   add(`<h4>Pulse</h4>` + [["overview","Overview"],["concentration","Concentration"],["roster","New Roster"],
        ["didnt-happen","What Didn't Happen"],["reference","Reference"],["watching","What We're Watching"]]
        .map(([k, l]) => `<button data-r="${k}">${l}</button>`).join(""));
-  add(`<h4>Chains</h4><button data-r="solana">Solana</button><button data-r="ethereum">Ethereum</button>`);
+  add(`<h4>Chains</h4><button data-r="solana">Solana</button><button data-r="ethereum">Ethereum</button><button data-r="compare">Solana vs Ethereum</button>`);
   if (!STATIC) add(`<h4>Data</h4><button data-r="health">Data health</button>`);
   if (STATIC) {
     nav.addEventListener("click", e => { const b = e.target.closest("button[data-r]"); if (b) location.hash = b.dataset.r; });
@@ -312,7 +316,7 @@ function route() {
   // On phones the nav is a horizontal strip: keep the current page's tab in view
   document.querySelector("nav button.active")?.scrollIntoView({ inline: "center", block: "nearest" });
   const pages = { overview: pOverview, concentration: pConcentration, roster: pRoster,
-                  "didnt-happen": pDidnt, reference: pReference, watching: pWatching, solana: m => pChain(m, "solana"), ethereum: m => pChain(m, "ethereum"), health: overview };
+                  "didnt-happen": pDidnt, reference: pReference, watching: pWatching, solana: m => pChain(m, "solana"), ethereum: m => pChain(m, "ethereum"), compare: pCompare, health: overview };
   if (STATIC && kind === "health") { location.hash = "overview"; return; }
   if (pages[kind]) return load(m, pages[kind]);
   if (kind === "view") return grid(m, "view", name);
@@ -500,7 +504,37 @@ async function pChain(m, key) {
       ${shown.map((a, i) => `<tr><td class="muted">${i + 1}</td><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="num">${compact(a.tvl, true)}</td><td class="num">${a.share_of_asset == null ? "—" : a.share_of_asset.toFixed(0) + "%"}${a.source === "sweep" ? '<span class="muted">*</span>' : ""}</td></tr>`).join("")}
       </tbody></table>
       <p class="muted" style="font-size:12px">"Share of asset" is the part of each asset's on-chain value that sits on ${C}, out of every chain we read for it. * For assets found by the chain sweep, it's the value on ${C} as a share of CoinGecko's market cap for the asset.</p></div>
-    ${s.benchmark ? solanaVsEvm(s.benchmark, s.both || [], s.latest, s.measured) : ""}`;
+    ${key === "solana" ? `<div class="card" style="margin-top:24px"><h3>Solana vs Ethereum</h3><p>How Solana compares with Ethereum as a distribution venue — measured side by side, with findings — is on its own tab.</p><p><a href="#compare">Open Solana vs Ethereum →</a></p></div>` : ""}`;
+}
+
+// ── Solana vs Ethereum ──
+async function pCompare(m) {
+  const c = await api("/api/page/compare"), S = c.solana, E = c.ethereum;
+  if (!c.ready) { m.innerHTML = `<div class="eyebrow">Chains · Solana vs Ethereum</div>${lede("Waiting for this week's chain sweeps.", "The comparison appears once both Solana and Ethereum have been swept.")}`; return; }
+  const max = Math.max(...c.classes.map(x => Math.max(x.solana, x.ethereum)));
+  const pair = x => `<div class="dual"><span class="b sol" style="width:${x.solana / max * 100}%"></span><span class="b eth" style="width:${x.ethereum / max * 100}%"></span></div>`;
+  m.innerHTML = `<div class="eyebrow">Chains · Solana vs Ethereum</div>
+    ${lede(esc(c.verdict), `Both chains measured the same way on ${esc(c.sweep_date)}: every tokenised asset CoinGecko lists, supply read on-chain, issuer-held inventory removed. Findings below are recomputed every week.`)}
+    <div class="kpis">
+      <div class="kpi"><div class="label">Counted on-chain</div><div class="value">${compact(S.counted, true)} vs ${compact(E.counted, true)}</div><div class="note">Solana vs Ethereum · ${c.ratio.toFixed(1)}×</div></div>
+      <div class="kpi"><div class="label">Unsold issuer inventory</div><div class="value">${(S.held / S.minted * 100).toFixed(0)}% vs ${(E.held / E.minted * 100).toFixed(0)}%</div><div class="note">share of what's minted</div></div>
+      <div class="kpi"><div class="label">Value per holder</div><div class="value">${compact(S.avg_holding, true)} vs ${compact(E.avg_holding, true)}</div><div class="note">${compact(S.holders)} vs ${compact(E.holders)} holders</div></div>
+      <div class="kpi"><div class="label">Used in DeFi</div><div class="value">${S.defi_share.toFixed(0)}% vs ${E.defi_share.toFixed(0)}%</div><div class="note">DefiLlama · ${esc(c.benchmark.as_of)}</div></div>
+    </div>
+    <div class="card"><h3>What the data says</h3>
+      <ol class="findings">${c.findings.map(f => `<li><b>${esc(f.title)}.</b> ${esc(f.body)}</li>`).join("")}</ol></div>
+    <div class="grid2">
+      <div class="card"><h3>By asset class <small>counted · ${esc(c.as_of)}</small></h3>
+        <p class="muted" style="font-size:12px;margin:0 0 10px"><span class="key sol"></span> Solana &nbsp; <span class="key eth"></span> Ethereum</p>
+        <table class="dualtbl"><thead><tr><th>Asset class</th><th></th><th class="num">Solana</th><th class="num">Ethereum</th><th class="num">Solana share</th></tr></thead><tbody>
+        ${c.classes.map(x => `<tr><td>${esc(x.name)}</td><td style="min-width:120px">${pair(x)}</td><td class="num">${compact(x.solana, true)}</td><td class="num">${compact(x.ethereum, true)}</td><td class="num">${x.solana_share == null ? "—" : x.solana_share.toFixed(0) + "%"}</td></tr>`).join("")}
+        </tbody></table></div>
+      <div class="card"><h3>Largest issuers <small>share of each chain</small></h3>
+        <table><thead><tr><th>Solana</th><th class="num"></th><th>Ethereum</th><th class="num"></th></tr></thead><tbody>
+        ${S.issuers.map((x, i) => `<tr><td>${esc(x[0])}</td><td class="num">${x[2].toFixed(0)}%</td><td>${esc((E.issuers[i] || [""])[0])}</td><td class="num">${E.issuers[i] ? E.issuers[i][2].toFixed(0) + "%" : ""}</td></tr>`).join("")}
+        </tbody></table></div>
+    </div>
+    ${solanaVsEvm(c.benchmark, c.both, c.as_of, c.measured)}`;
 }
 
 // Solana vs Ethereum / EVM: distribution benchmark (dated snapshot) + our own both-chain reads
@@ -529,9 +563,9 @@ function solanaVsEvm(b, both, latest, measured) {
   const pp = v => v == null ? "—" : v.toFixed(1) + "%";
   const maxShare = Math.max(...b.networks.map(n => Math.max(n.value_share, n.holder_share)));
   const dual = n => `<div class="dual"><span class="b v" style="width:${n.value_share / maxShare * 100}%"></span><span class="b h" style="width:${n.holder_share / maxShare * 100}%"></span></div>`;
-  return `<div class="eyebrow" style="margin-top:34px">Solana vs Ethereum &amp; EVM · distribution</div>
-    ${lede(`Solana reaches ${b.holders_x.toFixed(1)}× as many RWA holders as Ethereum with about a third of the value, and puts twice the share of its RWAs to work in DeFi.`,
-      `Ethereum still holds ${b.value_x.toFixed(1)}× the value: it's where large, institutional money sits. Solana's edge is reach and composability, and it's strongest for retail-sized and DeFi-native products. Snapshot as of ${esc(b.as_of)}, from rwa.xyz and DefiLlama — not refreshed weekly.`)}
+  return `<div class="eyebrow" style="margin-top:34px">Detail · measurement and distribution across chains</div>
+    ${lede("How the two chains were measured, and where holders sit across all networks.",
+      `The measured table below uses this project's chain sweeps. The network table, holder counts and DeFi-use figures are rwa.xyz and DefiLlama's own numbers (snapshot of ${esc(b.as_of)}, not refreshed weekly); rwa.xyz values include issuer inventory, so they overstate chains where much is pre-minted.`)}
     ${measuredCompare(measured, b)}
     <div class="kpis">
       <div class="kpi"><div class="label">RWA holders</div><div class="value">${compact(sol.holders)} vs ${compact(eth.holders)}</div><div class="note">Solana vs Ethereum · ${b.holders_x.toFixed(1)}×</div></div>
@@ -549,7 +583,7 @@ function solanaVsEvm(b, both, latest, measured) {
           <td class="num">${usd0(n.per_holder)}</td><td class="num">${pp(n.defi_share)}</td></tr>`).join("")}
         </tbody></table></div>
       <div class="card"><h3>Where Solana wins, and where it doesn't</h3>
-        <p><b>Wins on reach.</b> ${sol.holder_share.toFixed(0)}% of all RWA holders, against ${sol.value_share.toFixed(0)}% of value. Cheap transfers make small positions viable; Ethereum mainnet's ${eth.holder_share.toFixed(0)}% of holders hold ${eth.value_share.toFixed(0)}% of value.</p>
+        <p><b>Wins on reach.</b> ${sol.holder_share.toFixed(0)}% of all RWA holders, against ${sol.value_share.toFixed(0)}% of rwa.xyz's value. Cheap transfers make small positions viable; Ethereum mainnet's ${eth.holder_share.toFixed(0)}% of holders hold ${eth.value_share.toFixed(0)}% of value.</p>
         <p><b>Wins on composability.</b> ${pp(sol.defi_share)} of active value is used in DeFi, vs ${pp(eth.defi_share)} on Ethereum. DeFi-native products are the ones that get used.</p>
         <p><b>Doesn't win on depth.</b> Institutional money funds listed on Solana mostly sit idle, which is why ${pp(sol.inactive_share)} of its supply is inactive.</p>
         <p><b>Doesn't beat every EVM chain on reach.</b> BNB Chain and Robinhood Chain have more holders, through an exchange or broker that already owns the users.</p>
