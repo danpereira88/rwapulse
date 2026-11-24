@@ -773,7 +773,7 @@ def page_compare(con):
     if ready:
         r = ratio(e["total"], s["total"])
         f.append({"key": "scale", "viz": {"label": "Tokenised value held", "fmt": "usd", "solana": s["total"], "ethereum": e["total"]},
-                  "title": f"Ethereum holds {r:.0f} times as much tokenised value as Solana",
+                  "title": f"Ethereum holds {r:.1f} times as much tokenised value as Solana" if r < 10 else f"Ethereum holds {r:.0f} times as much tokenised value as Solana",
                   "body": f"Counting only tokens that have actually been sold to holders, Ethereum has ${e['total']/1e9:.1f}B "
                           f"and Solana ${s['total']/1e9:.1f}B. Public trackers that count every token minted put the two "
                           f"chains closer together (rwa.xyz: ${be['value']/1e9:.1f}B and ${bs['value']/1e9:.1f}B), mainly "
