@@ -452,14 +452,20 @@ async function pSolana(m) {
   const s = await api("/api/page/solana");
   if (!s.latest) { m.innerHTML = `<div class="eyebrow">Solana</div>${lede("No on-chain reads yet.")}`; return; }
   const reads = s.reads.length;
+  const ref = s.reference, cov = ref && ref.value ? s.total / ref.value * 100 : null;
+  const shown = s.assets.slice(0, 100);
   m.innerHTML = `<div class="eyebrow">Chain · Solana</div>
-    ${lede(`${compact(s.total, true)} of tokenised real-world assets sit on Solana, read directly from the token mints.`,
-      `As of ${esc(s.latest)}. Measured on-chain only — mint supply × price — so every figure here is a reading, not an estimate. That is ${s.share_of_measured == null ? "—" : s.share_of_measured.toFixed(1) + "%"} of all RWA value read on-chain across chains (${compact(s.measured_all_chains, true)}). Tokenised stocks are included here, as their own class.`)}
-    <div class="banner"><b>Coverage.</b> Only tokens in the RWA Pulse universe are read, so Solana-native assets that CoinGecko doesn't list are missing.
-      ${reads < 2 ? `This view starts on ${esc(s.reads[0])} — ${reads} weekly read so far, so there's no trend yet.` : `${reads} weekly reads since ${esc(s.reads[0])}.`}
-      ${s.unread.length ? ` ${s.unread.length} token(s) listed on Solana couldn't be read this week: ${s.unread.map(u => esc(u.name)).join(", ")}.` : ""}</div>
+    ${lede(`${compact(s.total, true)} of tokenised real-world assets sit on Solana, read directly from ${s.n_tokens} token mints and net of issuer-held inventory.`,
+      `As of ${esc(s.latest)}. Measured on-chain — circulating supply × price — for every tokenised asset CoinGecko lists on Solana${s.sweep_date ? "" : " in the RWA Pulse universe"}. Tokenised stocks are included, as their own class.`
+      + (s.inventory ? ` Issuers have minted ${compact(s.inventory.minted, true)} on Solana, but most of the gap is inventory still in their own wallets — see below.` : (cov != null ? ` For reference, ${esc(ref.source)} counts ${compact(ref.value, true)} on Solana (${esc(ref.as_of)}).` : "")))}
+    <div class="banner"><b>Coverage.</b> ${s.sweep_date
+        ? `Every Solana token in CoinGecko's tokenised-asset categories is read (sweep of ${esc(s.sweep_date)}). Assets CoinGecko doesn't list — some Solana-native credit pools and permissioned funds — are still missing.`
+        : `Only tokens in the RWA Pulse universe are read, so most tokenised stocks and Solana-native assets are missing.`}
+      ${s.coverage_widened && s.series.length > 1 ? ` Coverage widened on ${esc(s.coverage_widened)}, so the chart steps up there.` : ""}
+      ${reads < 2 ? ` This view starts on ${esc(s.reads[0])}, so there's no trend yet.` : ""}
+      ${s.unread.length ? ` ${s.unread.length} token(s) listed on Solana couldn't be read this week: ${s.unread.slice(0, 12).map(u => esc(u.name)).join(", ")}${s.unread.length > 12 ? "…" : ""}.` : ""}</div>
     <div class="kpis">
-      <div class="kpi"><div class="label">RWA value on Solana</div><div class="value">${compact(s.total, true)}</div><div class="note">${s.change_vs_prev == null ? `${s.assets.length} assets` : pct(s.change_vs_prev) + " vs last read"}</div></div>
+      <div class="kpi"><div class="label">RWA value on Solana</div><div class="value">${compact(s.total, true)}</div><div class="note">${s.change_vs_prev == null ? `${s.n_tokens} tokens read` : pct(s.change_vs_prev) + " vs last read"}</div></div>
       <div class="kpi"><div class="label">Yield-bearing</div><div class="value">${compact(s.yield_bearing, true)}</div><div class="note">Treasuries, MMFs & credit</div></div>
       <div class="kpi"><div class="label">Tokenised stocks</div><div class="value">${compact(s.stocks, true)}</div><div class="note">equities & ETFs</div></div>
       <div class="kpi"><div class="label">Gold & commodities</div><div class="value">${compact(s.commodities, true)}</div><div class="note">on Solana</div></div>
@@ -470,11 +476,29 @@ async function pSolana(m) {
       <div class="card"><h3>RWA value on Solana <small>weekly on-chain reads</small></h3>
         ${s.series.length > 1 ? multiLine([{name: "On Solana", color: "var(--teal)", points: s.series}]) : `<p class="muted">The weekly series starts on ${esc(s.reads[0])}; the chart appears after the second read.</p>`}</div>
     </div>
-    <div class="card"><h3>Assets on Solana <small>${s.assets.length} · ${esc(s.latest)}</small></h3>
-      <table><thead><tr><th>#</th><th>Asset</th><th>Issuer</th><th>Asset class</th><th class="num">Value on Solana</th><th class="num">Share of asset's supply</th></tr></thead><tbody>
-      ${s.assets.map((a, i) => `<tr><td class="muted">${i + 1}</td><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="num">${compact(a.tvl, true)}</td><td class="num">${a.share_of_asset == null ? "—" : a.share_of_asset.toFixed(0) + "%"}</td></tr>`).join("")}
+    ${s.inventory ? `<div class="grid2">
+      <div class="card"><h3>From minted to counted <small>sweep of ${esc(s.sweep_date)}</small></h3>
+        <table><tbody>
+          <tr><td>Minted on Solana <div class="muted" style="font-size:11px">supply × price for every swept token</div></td><td class="num">${compact(s.inventory.minted, true)}</td></tr>
+          <tr><td>− Held in the issuers' own wallets <div class="muted" style="font-size:11px">pre-minted inventory, not yet sold</div></td><td class="num">−${compact(s.inventory.held, true)}</td></tr>
+          <tr><td>= Circulating on-chain</td><td class="num">${compact(s.inventory.circulating, true)}</td></tr>
+          <tr><td>− Not confirmed by CoinGecko <div class="muted" style="font-size:11px">${s.disputed.length} tokens worth more on Solana than their whole market cap</div></td><td class="num">−${compact(s.disputed_total, true)}</td></tr>
+          <tr class="hl"><td><b>= Counted on this page</b></td><td class="num"><b>${compact(s.total, true)}</b></td></tr>
+        </tbody></table>
+        ${ref ? `<p class="muted" style="font-size:12px">${esc(ref.source)}'s ${compact(ref.value, true)} for Solana is close to the minted figure, so it likely includes issuer inventory.</p>` : ""}
+        <p class="muted" style="font-size:12px">"Issuers' own wallets" are the mint's authority wallets (mint, freeze, multiplier and metadata authorities). Inventory an issuer keeps elsewhere can't be told apart from real holders.</p></div>
+      <div class="card"><h3>Largest issuer inventories</h3>
+        <table><thead><tr><th>Token</th><th class="num">Minted</th><th class="num">In issuer wallets</th></tr></thead><tbody>
+        ${s.inventory.top.map(t => `<tr><td>${esc(t.name)}<div class="muted" style="font-size:11px">${esc(t.issuer)}</div></td><td class="num">${compact(t.minted, true)}</td><td class="num">${compact(t.held, true)} <span class="muted">${(t.held / t.minted * 100).toFixed(0)}%</span></td></tr>`).join("")}</tbody></table>
+        ${s.disputed.length ? `<h3 style="margin-top:20px">Not counted: sources disagree <small>top ${Math.min(8, s.disputed.length)} of ${s.disputed.length}</small></h3>
+        <table><thead><tr><th>Token</th><th class="num">On Solana</th><th class="num">CoinGecko mkt cap</th></tr></thead><tbody>
+        ${s.disputed.slice(0, 8).map(d => `<tr><td>${esc(d.name)}</td><td class="num">${compact(d.value, true)}</td><td class="num">${d.cg_mcap ? compact(d.cg_mcap, true) : "none"}</td></tr>`).join("")}</tbody></table>` : ""}</div>
+    </div>` : ""}
+    <div class="card"><h3>Assets on Solana <small>${s.assets.length} over $100K${s.assets.length > shown.length ? ", top " + shown.length + " shown" : ""} · ${esc(s.latest)}</small></h3>
+      <table><thead><tr><th>#</th><th>Asset</th><th>Issuer</th><th>Asset class</th><th class="num">Value on Solana</th><th class="num">Share of asset</th></tr></thead><tbody>
+      ${shown.map((a, i) => `<tr><td class="muted">${i + 1}</td><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="num">${compact(a.tvl, true)}</td><td class="num">${a.share_of_asset == null ? "—" : a.share_of_asset.toFixed(0) + "%"}${a.source === "sweep" ? '<span class="muted">*</span>' : ""}</td></tr>`).join("")}
       </tbody></table>
-      <p class="muted" style="font-size:12px">"Share of asset's supply" is the part of each asset's on-chain value that sits on Solana, out of every chain we read for it.</p></div>
+      <p class="muted" style="font-size:12px">"Share of asset" is the part of each asset's on-chain value that sits on Solana, out of every chain we read for it. * For assets found by the Solana sweep, it's the Solana value as a share of CoinGecko's market cap for the asset.</p></div>
     ${s.benchmark ? solanaVsEvm(s.benchmark, s.both || [], s.latest) : ""}`;
 }
 

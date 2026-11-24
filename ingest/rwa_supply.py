@@ -76,7 +76,8 @@ EVM_RPCS = {
     "etherlink": ["https://node.mainnet.etherlink.com"],
     "plume-network": ["https://rpc.plume.org"],
 }
-SOLANA_RPCS = ["https://api.mainnet-beta.solana.com", "https://solana-rpc.publicnode.com"]
+SOLANA_RPCS = ["https://api.mainnet-beta.solana.com", "https://solana-mainnet.gateway.tatum.io",
+               "https://solana-rpc.publicnode.com"]
 STELLAR_HORIZON = "https://horizon.stellar.org"
 XRPL_RPCS = ["https://xrplcluster.com"]
 APTOS_API = "https://api.mainnet.aptoslabs.com/v1"

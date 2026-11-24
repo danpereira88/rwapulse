@@ -81,9 +81,11 @@ The pipeline now uses free sources for those products:
 |------|--------|---------------|
 | `ingest/rwa_supply.py` | CoinGecko `/coins/{id}` (no key) | contract address per chain, decimals, price/NAV |
 | `ingest/rwa_supply.py` | public RPC (EVM chains, Solana), Stellar Horizon | `totalSupply` per chain |
+| `ingest/chain_sweep.py` | CoinGecko `/coins/markets` by category + `/coins/list`, Solana RPC | every tokenised asset CoinGecko lists on Solana: supply (Token-2022 multipliers applied) minus issuer-held inventory |
 | `ui/insights.py` | the above, else CoinGecko market cap or Centrifuge subgraph scaled to DefiLlama's 2026-09-13 level | gap-filled TVL, every row labelled with its source |
 
 Run on its own: `python ingest/rwa_supply.py --dry-run` (prints, writes nothing).
+Solana sweep on its own: `python ingest/chain_sweep.py --dry-run`.
 Chains read: EVM (Ethereum, BNB, Polygon, Arbitrum, Base, Optimism, Avalanche, Mantle, Etherlink, Plume), Solana, Stellar, XRPL, Aptos, Sui.
 The universe is asset-level (ingest/rwa_universe.py), grouped by issuer like DefiLlama's RWA dashboard.
 `dl_protocol_tvl` is now merged on each run instead of rebuilt, so history is kept.

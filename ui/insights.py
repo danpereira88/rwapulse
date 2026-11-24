@@ -570,29 +570,95 @@ def page_chain(con, platform="solana"):
             elif r["status"] != "ok" and r["snapshot_date"] == latest:
                 unread.append({"name": name, "issuer": issuer, "status": r["status"]})
 
-    assets = []
-    for (d, cid), v in on_chain.items():
-        if d != latest or v < 1e5:
-            continue
-        name, cls, issuer = meta(cid)
-        tot = asset_total[(d, cid)]
-        assets.append({"name": name, "issuer": issuer, "category": CLASS_LABEL[cls], "asset_class": cls,
-                       "tvl": v, "share_of_asset": v / tot * 100 if tot else None, "source": "onchain"})
-    assets.sort(key=lambda a: -a["tvl"])
+    # ── Chain sweep: every tokenised asset CoinGecko lists on the chain ──
+    # For ids the main reader also covers, its reading wins (it knows the other
+    # chains, so share_of_asset is exact); the sweep adds everything else.
+    sweep = defaultdict(dict)   # sweep date -> id -> row
+    if _has(con, "chain_sweep"):
+        cols = {c["column_name"] for c in _q(con, """SELECT column_name FROM information_schema.columns
+                                                      WHERE table_name = 'chain_sweep'""")}
+        minted = "minted_value_usd" if "minted_value_usd" in cols else "value_usd"
+        for r in _q(con, f"""SELECT snapshot_date, coingecko_id AS id, name, asset_class, issuer, value_usd,
+                                    {minted} AS minted_usd, cg_mcap_usd, status FROM chain_sweep
+                             WHERE platform = ? AND snapshot_date LIKE '20%'""", [platform]):
+            sweep[r["snapshot_date"]][r["id"]] = r
+    sweep_dates = sorted(sweep)
 
-    total = sum(a["tvl"] for a in assets)
-    issuers = defaultdict(float)
-    for a in assets:
-        issuers[a["issuer"]] += a["tvl"]
+    def paired_read(sd):
+        """The main reader's date that goes with a sweep date (same week)."""
+        cands = [d for d in dates if d <= sd and (date.fromisoformat(sd) - date.fromisoformat(d)).days <= 6]
+        return cands[-1] if cands else None
+
+    def merged(d_read, d_sweep):
+        """{id: (value, name, cls, issuer, share_of_asset, source)} for one week."""
+        out = {}
+        for (d, cid), v in on_chain.items():
+            if d != d_read:
+                continue
+            name, cls, issuer = meta(cid)
+            tot = asset_total[(d, cid)]
+            out[cid] = (v, name, cls, issuer, v / tot * 100 if tot else None, "onchain")
+        for cid, r in (sweep.get(d_sweep) or {}).items():
+            if cid in out or not (r["status"] or "").startswith("ok") or not r["value_usd"]:
+                continue
+            if _sweep_disputed(cid, r):
+                continue
+            mc = r["cg_mcap_usd"]
+            out[cid] = (r["value_usd"], r["name"] or cid, r["asset_class"], r["issuer"] or r["name"] or cid,
+                        min(r["value_usd"] / mc * 100, 100) if mc else None, "sweep")
+        return out
+
+    weeks = {d: (d, None) for d in dates}
+    for sd in sweep_dates:
+        rd = paired_read(sd)
+        weeks.pop(rd, None)
+        weeks[sd] = (rd, sd)
+    week_vals = {k: merged(*v) for k, v in weeks.items()}
+    series = [[d, sum(x[0] for x in week_vals[d].values())] for d in sorted(week_vals)]
+    latest = series[-1][0] if series else latest
+    cur = week_vals.get(latest, {})
+    latest_sweep = sweep_dates[-1] if sweep_dates else None
+    if latest_sweep and weeks.get(latest, (None, None))[1] == latest_sweep:
+        for cid, r in sweep[latest_sweep].items():
+            if not (r["status"] or "").startswith("ok"):
+                unread.append({"name": r["name"] or cid, "issuer": r["issuer"], "status": r["status"]})
+
+    assets = [{"name": n, "issuer": i, "category": CLASS_LABEL[c], "asset_class": c, "tvl": v,
+               "share_of_asset": sh, "source": src}
+              for cid, (v, n, c, i, sh, src) in cur.items() if v >= 1e5]
+    assets.sort(key=lambda a: -a["tvl"])
+    total = sum(x[0] for x in cur.values())
+    issuers, cls_latest = defaultdict(float), defaultdict(float)
+    for v, n, c, i, sh, src in cur.values():
+        issuers[i] += v
+        cls_latest[c] += v
+    read_latest = weeks.get(latest, (latest, None))[0]
+    disputed = []
+    if latest_sweep and weeks.get(latest, (None, None))[1] == latest_sweep:
+        disputed = sorted(({"name": r["name"] or cid, "issuer": r["issuer"], "value": r["value_usd"],
+                            "cg_mcap": r["cg_mcap_usd"]}
+                           for cid, r in sweep[latest_sweep].items()
+                           if (r["status"] or "").startswith("ok") and r["value_usd"] and _sweep_disputed(cid, r)
+                           and cid not in cur), key=lambda x: -x["value"])
+    inventory = None
+    if latest_sweep and weeks.get(latest, (None, None))[1] == latest_sweep:
+        rs = [r for r in sweep[latest_sweep].values() if (r["status"] or "").startswith("ok") and r["minted_usd"]]
+        held = [(r["minted_usd"] - (r["value_usd"] or 0), r) for r in rs]
+        inventory = {"minted": sum(r["minted_usd"] for r in rs), "circulating": sum(r["value_usd"] or 0 for r in rs),
+                     "held": sum(h for h, _ in held),
+                     "top": [{"name": r["name"], "issuer": r["issuer"], "held": h, "minted": r["minted_usd"]}
+                             for h, r in sorted(held, key=lambda x: -x[0])[:8] if h > 1e6],
+                     "unread": sum(1 for r in rs if r["status"] != "ok")}
+
     # Same asset, both chains: where did issuers' supply land, Solana or Ethereum?
     both = []
-    if platform == "solana":
+    if platform == "solana" and read_latest:
         eth = defaultdict(float)
         for r in rows:
-            if r["snapshot_date"] == latest and r["platform"] == "ethereum" and r["status"] == "ok" and r["value_usd"]:
+            if r["snapshot_date"] == read_latest and r["platform"] == "ethereum" and r["status"] == "ok" and r["value_usd"]:
                 eth[r["id"]] += r["value_usd"]
         for (d, cid), v in on_chain.items():
-            if d != latest or v < 1e5 or not eth.get(cid):
+            if d != read_latest or v < 1e5 or not eth.get(cid):
                 continue
             name, cls, issuer = meta(cid)
             e, tot = eth[cid], asset_total[(d, cid)]
@@ -600,22 +666,43 @@ def page_chain(con, platform="solana"):
                          "other": max(tot - v - e, 0), "solana_vs_eth": v / (v + e) * 100})
         both.sort(key=lambda a: -(a["solana"] + a["ethereum"]))
 
-    cls_latest = by_date.get(latest, {})
-    series = [[d, sum(by_date[d].values())] for d in dates]
-    prev = dates[-2] if len(dates) > 1 else None
+    prev = series[-2] if len(series) > 1 else None
+    widened = next((d for d in sorted(week_vals) if weeks[d][1]), None)
+    bench = _chain_benchmark() if platform == "solana" else None
+    ref = None
+    if bench:
+        row = next((n for n in bench["networks"] if n["name"] == label), None)
+        ref = {"value": row["value"], "as_of": bench["as_of"], "source": "rwa.xyz"} if row else None
     return {
-        "chain": label, "platform": platform, "latest": latest, "reads": dates,
-        "total": total,
+        "chain": label, "platform": platform, "latest": latest, "reads": sorted(week_vals),
+        "total": total, "n_tokens": len(cur), "sweep_date": latest_sweep, "coverage_widened": widened,
         "yield_bearing": sum(v for c, v in cls_latest.items() if c in YIELD_BEARING),
         "stocks": cls_latest.get("stocks", 0), "commodities": cls_latest.get("commodities", 0),
-        "share_of_measured": (total / all_chains_total[latest] * 100) if latest and all_chains_total[latest] else None,
-        "measured_all_chains": all_chains_total.get(latest, 0),
-        "change_vs_prev": ((series[-1][1] / series[-2][1] - 1) * 100) if prev and series[-2][1] else None,
+        "share_of_measured": (total / all_chains_total[read_latest] * 100)
+                             if read_latest and all_chains_total.get(read_latest) and not latest_sweep else None,
+        "measured_all_chains": all_chains_total.get(read_latest, 0),
+        "change_vs_prev": ((series[-1][1] / prev[1] - 1) * 100)
+                          if prev and prev[1] and not (widened and widened == latest) else None,
         "classes": sorted(([CLASS_LABEL[c], v, v / total * 100] for c, v in cls_latest.items() if total), key=lambda x: -x[1]),
-        "issuers": sorted(([k, v, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1])[:10],
+        "issuers": sorted(([k, v, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1])[:12],
         "assets": assets, "series": series, "unread": unread,
-        "both": both, "benchmark": _chain_benchmark() if platform == "solana" else None,
+        "reference": ref, "both": both, "benchmark": bench, "inventory": inventory,
+        "disputed": disputed, "disputed_total": sum(d["value"] for d in disputed),
     }
+
+
+SWEEP_MAX_VS_MCAP = 1.5     # circulating on one chain can't exceed the asset's whole market cap
+SWEEP_UNCHECKED_MAX = 1e6   # with no CoinGecko market cap, count at most this much unconfirmed
+
+
+def _sweep_disputed(cid, r):
+    """A swept token whose on-chain value CoinGecko's market cap doesn't back up.
+    Shown on the page, left out of totals (as 'sources disagree' elsewhere)."""
+    from ingest.rwa_universe import CHAIN_ONLY
+    if cid in CHAIN_ONLY:            # cross-checked against DefiLlama instead
+        return False
+    v, mc = r["value_usd"] or 0, r["cg_mcap_usd"] or 0
+    return v > SWEEP_UNCHECKED_MAX if mc <= 0 else v > SWEEP_MAX_VS_MCAP * mc
 
 
 def _chain_benchmark():
