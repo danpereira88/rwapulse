@@ -171,6 +171,7 @@ const api = async (path, opts) => {
     const sp = staticPath(path);
     if (!sp) throw new Error("This view needs the local data server (ui/app.py).");
     path = sp;
+    opts = {cache: "no-cache", ...(opts || {})};  // revalidate: weekly snapshots overwrite the same file names
   }
   const r = await fetch(path, opts); const j = await r.json();
   if (!r.ok || j.error) throw new Error(j.error || r.statusText); return j;
@@ -642,7 +643,7 @@ function sqlConsole(m) {
 (async () => {
   try {
     if (STATIC) {
-      const meta = await fetch("data/meta.json").then(r => r.json());
+      const meta = await fetch("data/meta.json", {cache: "no-cache"}).then(r => r.json());
       $("#dbstamp").textContent = `snapshot · updated ${meta.exported_at.replace("T", " ").replace("+00:00", " UTC")}`;
     } else {
       TABLES = (await api("/api/tables")).tables;
