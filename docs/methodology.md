@@ -54,6 +54,13 @@ Top-5 share and HHI (sum of squared % shares) across **issuers**, on the yield-b
 - History starts 15 May 2026 (weekly). Figures from the May 2026 study used a protocol-level method and are shown only as a labelled reference, not compared with live numbers.
 - CoinGecko market caps for permissioned funds rely on issuer-reported supply and NAV.
 
+## 6b. Solana vs Ethereum benchmark
+
+The Solana tab compares distribution across chains. Two parts:
+
+- **Same asset, both chains** — from our own weekly on-chain reads: for each asset read on both Solana and Ethereum, the value on each. Refreshed weekly.
+- **Holders, average holding, DeFi use, inactive supply** — a dated snapshot from rwa.xyz (distributed value excluding stablecoins, wallets holding an RWA) and DefiLlama's RWA dashboard (DeFi active TVL / active AUM; on-chain AUM not counted as active). Neither has a free API, so these numbers live in `ui/chain_benchmark.py` with an `as_of` date and are updated by hand. Holder counts count a person once per chain and can be inflated by airdrops or empty wallets.
+
 ## 7. Publishing safeguards
 
 The weekly job publishes only if every pipeline step succeeded and the new snapshot passes `scripts/check_snapshot.py`: total non-zero, within ±25% of the last published snapshot, no more than 30% of value without a source, and data date not going backwards.

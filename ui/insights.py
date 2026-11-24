@@ -584,6 +584,22 @@ def page_chain(con, platform="solana"):
     issuers = defaultdict(float)
     for a in assets:
         issuers[a["issuer"]] += a["tvl"]
+    # Same asset, both chains: where did issuers' supply land, Solana or Ethereum?
+    both = []
+    if platform == "solana":
+        eth = defaultdict(float)
+        for r in rows:
+            if r["snapshot_date"] == latest and r["platform"] == "ethereum" and r["status"] == "ok" and r["value_usd"]:
+                eth[r["id"]] += r["value_usd"]
+        for (d, cid), v in on_chain.items():
+            if d != latest or v < 1e5 or not eth.get(cid):
+                continue
+            name, cls, issuer = meta(cid)
+            e, tot = eth[cid], asset_total[(d, cid)]
+            both.append({"name": name, "issuer": issuer, "category": CLASS_LABEL[cls], "solana": v, "ethereum": e,
+                         "other": max(tot - v - e, 0), "solana_vs_eth": v / (v + e) * 100})
+        both.sort(key=lambda a: -(a["solana"] + a["ethereum"]))
+
     cls_latest = by_date.get(latest, {})
     series = [[d, sum(by_date[d].values())] for d in dates]
     prev = dates[-2] if len(dates) > 1 else None
@@ -598,4 +614,10 @@ def page_chain(con, platform="solana"):
         "classes": sorted(([CLASS_LABEL[c], v, v / total * 100] for c, v in cls_latest.items() if total), key=lambda x: -x[1]),
         "issuers": sorted(([k, v, v / total * 100] for k, v in issuers.items()), key=lambda x: -x[1])[:10],
         "assets": assets, "series": series, "unread": unread,
+        "both": both, "benchmark": _chain_benchmark() if platform == "solana" else None,
     }
+
+
+def _chain_benchmark():
+    from chain_benchmark import benchmark
+    return benchmark()

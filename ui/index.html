@@ -77,6 +77,12 @@
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 8px 0; }
   .lede { font-family: var(--serif); font-size: 21px; line-height: 1.35; max-width: 760px; margin: 0 0 10px; color: #f3f7f4; }
   .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+  .dual { display: flex; flex-direction: column; gap: 3px; }
+  .dual .b, .key { display: inline-block; height: 7px; border-radius: 3px; min-width: 2px; }
+  .key { width: 14px; vertical-align: middle; }
+  .dual .v, .key.v { background: var(--teal); }
+  .dual .h, .key.h { background: var(--gold); }
+  tr.hl td { background: rgba(255,255,255,0.04); }
   .banner { border: 1px solid #5a4a22; background: #1d1a0f; color: #e8dcb6; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 18px; max-width: 980px; }
   .pill.src-gold { color: var(--gold); border-color: #5a4a22; } .pill.src-teal { color: var(--teal); border-color: #1f5a52; } .pill.src-red { color: var(--down); border-color: #5a2a22; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
@@ -467,7 +473,51 @@ async function pSolana(m) {
       <table><thead><tr><th>#</th><th>Asset</th><th>Issuer</th><th>Asset class</th><th class="num">Value on Solana</th><th class="num">Share of asset's supply</th></tr></thead><tbody>
       ${s.assets.map((a, i) => `<tr><td class="muted">${i + 1}</td><td title="${esc(a.name)}">${esc(a.name)}</td><td class="muted">${esc(a.issuer)}</td><td class="muted">${esc(a.category)}</td><td class="num">${compact(a.tvl, true)}</td><td class="num">${a.share_of_asset == null ? "—" : a.share_of_asset.toFixed(0) + "%"}</td></tr>`).join("")}
       </tbody></table>
-      <p class="muted" style="font-size:12px">"Share of asset's supply" is the part of each asset's on-chain value that sits on Solana, out of every chain we read for it.</p></div>`;
+      <p class="muted" style="font-size:12px">"Share of asset's supply" is the part of each asset's on-chain value that sits on Solana, out of every chain we read for it.</p></div>
+    ${s.benchmark ? solanaVsEvm(s.benchmark, s.both || [], s.latest) : ""}`;
+}
+
+// Solana vs Ethereum / EVM: distribution benchmark (dated snapshot) + our own both-chain reads
+function solanaVsEvm(b, both, latest) {
+  const sol = b.solana, eth = b.ethereum, usd0 = v => "$" + Math.round(v).toLocaleString();
+  const pp = v => v == null ? "—" : v.toFixed(1) + "%";
+  const maxShare = Math.max(...b.networks.map(n => Math.max(n.value_share, n.holder_share)));
+  const dual = n => `<div class="dual"><span class="b v" style="width:${n.value_share / maxShare * 100}%"></span><span class="b h" style="width:${n.holder_share / maxShare * 100}%"></span></div>`;
+  return `<div class="eyebrow" style="margin-top:34px">Solana vs Ethereum &amp; EVM · distribution</div>
+    ${lede(`Solana reaches ${b.holders_x.toFixed(1)}× as many RWA holders as Ethereum with about a third of the value, and puts twice the share of its RWAs to work in DeFi.`,
+      `Ethereum still holds ${b.value_x.toFixed(1)}× the value: it's where large, institutional money sits. Solana's edge is reach and composability, and it's strongest for retail-sized and DeFi-native products. Snapshot as of ${esc(b.as_of)}, from rwa.xyz and DefiLlama — not refreshed weekly.`)}
+    <div class="kpis">
+      <div class="kpi"><div class="label">RWA holders</div><div class="value">${compact(sol.holders)} vs ${compact(eth.holders)}</div><div class="note">Solana vs Ethereum · ${b.holders_x.toFixed(1)}×</div></div>
+      <div class="kpi"><div class="label">Average holding</div><div class="value">${compact(sol.per_holder, true)} vs ${compact(eth.per_holder, true)}</div><div class="note">Solana tickets ~${Math.round(b.ticket_x)}× smaller</div></div>
+      <div class="kpi"><div class="label">Share used in DeFi</div><div class="value">${pp(sol.defi_share)} vs ${pp(eth.defi_share)}</div><div class="note">DeFi active TVL / active AUM</div></div>
+      <div class="kpi"><div class="label">Inactive supply</div><div class="value">${pp(sol.inactive_share)} vs ${pp(eth.inactive_share)}</div><div class="note">minted but not in active AUM</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Share of value vs share of holders <small>${esc(b.as_of)} · % of all ${compact(b.total_holders)} holders / ${compact(b.total_value, true)}</small></h3>
+        <p class="muted" style="font-size:12px;margin:0 0 10px"><span class="key v"></span> share of RWA value &nbsp; <span class="key h"></span> share of RWA holders</p>
+        <table class="dualtbl"><thead><tr><th>Network</th><th></th><th class="num">Value</th><th class="num">Holders</th><th class="num">Avg holding</th><th class="num">In DeFi</th></tr></thead><tbody>
+        ${b.networks.map(n => `<tr${n.name === "Solana" ? ' class="hl"' : ""}><td>${esc(n.name)}<div class="muted" style="font-size:11px">${esc(n.family)}</div></td><td style="min-width:120px">${dual(n)}</td>
+          <td class="num">${compact(n.value, true)}<div class="muted" style="font-size:11px">${n.value_share.toFixed(1)}%</div></td>
+          <td class="num">${compact(n.holders)}<div class="muted" style="font-size:11px">${n.holder_share.toFixed(1)}%</div></td>
+          <td class="num">${usd0(n.per_holder)}</td><td class="num">${pp(n.defi_share)}</td></tr>`).join("")}
+        </tbody></table></div>
+      <div class="card"><h3>Where Solana wins, and where it doesn't</h3>
+        <p><b>Wins on reach.</b> ${sol.holder_share.toFixed(0)}% of all RWA holders, against ${sol.value_share.toFixed(0)}% of value. Cheap transfers make small positions viable; Ethereum mainnet's ${eth.holder_share.toFixed(0)}% of holders hold ${eth.value_share.toFixed(0)}% of value.</p>
+        <p><b>Wins on composability.</b> ${pp(sol.defi_share)} of active value is used in DeFi, vs ${pp(eth.defi_share)} on Ethereum. DeFi-native products are the ones that get used.</p>
+        <p><b>Doesn't win on depth.</b> Institutional money funds listed on Solana mostly sit idle, which is why ${pp(sol.inactive_share)} of its supply is inactive.</p>
+        <p><b>Doesn't beat every EVM chain on reach.</b> BNB Chain and Robinhood Chain have more holders, through an exchange or broker that already owns the users.</p>
+        <p class="muted" style="font-size:12px">30-day change in active AUM: Solana ${pct(sol.change_30d)}, Ethereum ${pct(eth.change_30d)}.</p></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Same asset, both chains <small>our on-chain reads · ${esc(latest)}</small></h3>
+        ${both.length ? `<table><thead><tr><th>Asset</th><th class="num">On Solana</th><th class="num">On Ethereum</th><th class="num">Other chains</th><th class="num">Solana share of Sol+Eth</th></tr></thead><tbody>
+        ${both.map(a => `<tr><td title="${esc(a.name)}">${esc(a.issuer)}<div class="muted" style="font-size:11px">${esc(a.category)}</div></td><td class="num">${compact(a.solana, true)}</td><td class="num">${compact(a.ethereum, true)}</td><td class="num">${compact(a.other, true)}</td><td class="num">${a.solana_vs_eth.toFixed(0)}%</td></tr>`).join("")}
+        </tbody></table><p class="muted" style="font-size:12px">For issuers on both chains, where the supply ended up. Measured weekly from the token contracts.</p>` : `<p class="muted">No asset read on both chains yet.</p>`}</div>
+      <div class="card"><h3>Product evidence on Solana <small>DefiLlama · ${esc(b.as_of)}</small></h3>
+        <table><tbody>${b.evidence.map(e => `<tr><td>${esc(e[0])}<div class="muted" style="font-size:11px">${esc(e[1])}</div></td><td>${esc(e[2])}</td></tr>`).join("")}</tbody></table></div>
+    </div>
+    <p class="muted" style="font-size:12px">Definitions: value is "distributed" RWA value excluding stablecoins; holders are wallets holding at least one RWA on that network, so one person with wallets on several chains counts on each, and airdrops or empty wallets can inflate counts. In DeFi = DeFi active TVL / active AUM. Inactive = on-chain AUM not counted as active. These benchmark figures are a dated snapshot and are not refreshed by the weekly pipeline.
+      Sources: ${b.sources.map(s => `<a href="${esc(s[1])}" target="_blank" rel="noopener">${esc(s[0])}</a>`).join(" · ")}.</p>`;
 }
 
 // ── What We're Watching ──
