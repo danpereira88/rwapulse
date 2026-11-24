@@ -463,7 +463,7 @@ async function pSolana(m) {
         : `Only tokens in the RWA Pulse universe are read, so most tokenised stocks and Solana-native assets are missing.`}
       ${s.coverage_widened && s.series.length > 1 ? ` Coverage widened on ${esc(s.coverage_widened)}, so the chart steps up there.` : ""}
       ${reads < 2 ? ` This view starts on ${esc(s.reads[0])}, so there's no trend yet.` : ""}
-      ${s.unread.length ? ` ${s.unread.length} token(s) listed on Solana couldn't be read this week: ${s.unread.slice(0, 12).map(u => esc(u.name)).join(", ")}${s.unread.length > 12 ? "…" : ""}.` : ""}</div>
+      ${s.unread.length ? ` ${s.unread.length} token(s) on Solana couldn't be valued this week (no price or read failed): ${s.unread.slice(0, 12).map(u => esc(u.name)).join(", ")}${s.unread.length > 12 ? "…" : ""}.` : ""}</div>
     <div class="kpis">
       <div class="kpi"><div class="label">RWA value on Solana</div><div class="value">${compact(s.total, true)}</div><div class="note">${s.change_vs_prev == null ? `${s.n_tokens} tokens read` : pct(s.change_vs_prev) + " vs last read"}</div></div>
       <div class="kpi"><div class="label">Yield-bearing</div><div class="value">${compact(s.yield_bearing, true)}</div><div class="note">Treasuries, MMFs & credit</div></div>
