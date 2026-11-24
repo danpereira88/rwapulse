@@ -23,3 +23,6 @@ logs/
 *.bak-*
 
 # site/ IS committed: it's the static dashboard snapshot Vercel serves
+
+# one-off data imports
+data/*.parquet
