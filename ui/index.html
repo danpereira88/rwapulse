@@ -90,6 +90,47 @@
   .section { margin: 26px 0 8px; } .section h2 { font-family: var(--serif); font-weight: 600; font-size: 22px; margin: 0 0 4px; }
   .stat-row { display: flex; gap: 26px; flex-wrap: wrap; margin: 8px 0 14px; } .stat-row div { font-family: var(--mono); } .stat-row small { display: block; color: var(--muted); font-family: var(--sans); font-size: 12px; }
   code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  /* ── Phones and small tablets ───────────────────────────────────────────── */
+  @media (max-width: 760px) {
+    html, body { height: auto; }
+    body { display: block; font-size: 14px; }
+    nav { position: sticky; top: 0; z-index: 10; width: 100%; padding: 10px 0 0; border-right: 0;
+          border-bottom: 1px solid var(--line); display: flex; flex-wrap: nowrap; align-items: center;
+          overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    nav::-webkit-scrollbar { display: none; }
+    nav .brand { font-size: 18px; padding: 0 14px 10px 16px; white-space: nowrap; flex: none; }
+    nav .sub, nav h4 { display: none; }
+    nav button { width: auto; flex: none; white-space: nowrap; padding: 8px 12px 10px; border-left: 0;
+                 border-bottom: 2px solid transparent; font-size: 14px; }
+    nav button small { display: none; }
+    nav button.active { background: none; border-bottom-color: var(--teal); }
+    main { overflow: visible; padding: 18px 16px 48px; }
+    h1 { font-size: 23px; }
+    .lede { font-size: 18px; }
+    .desc { font-size: 13px; }
+    .kpis { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kpi { padding: 12px; }
+    .kpi .value { font-size: 19px; word-break: break-word; }
+    .kpi .note { font-size: 11px; }
+    .grid2 { grid-template-columns: 1fr; gap: 12px; }
+    .card { padding: 14px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .card table { min-width: 520px; }
+    th, td { padding: 7px 8px; font-size: 13px; }
+    td { max-width: 220px; }
+    .tablewrap { max-height: none; }
+    .toolbar input { width: 100% !important; }
+    .pager { margin-left: 0; width: 100%; justify-content: space-between; }
+    .bar .lbl { width: 120px; font-size: 12px; }
+    .bar .v { width: 66px; font-size: 12px; }
+    .cards { grid-template-columns: 1fr; }
+    .watch { padding: 14px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .watch table { min-width: 520px; }
+    main { overflow-x: hidden; }
+    .watch h2, .section h2 { font-size: 19px; }
+    .banner { font-size: 12px; }
+    .chart .axis { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
@@ -256,7 +297,9 @@ function route() {
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.r === r));
   const [kind, name] = r.split("/");
   const m = $("#main");
-  m.scrollTop = 0;
+  m.scrollTop = 0; window.scrollTo(0, 0);
+  // On phones the nav is a horizontal strip: keep the current page's tab in view
+  document.querySelector("nav button.active")?.scrollIntoView({ inline: "center", block: "nearest" });
   const pages = { overview: pOverview, concentration: pConcentration, roster: pRoster,
                   "didnt-happen": pDidnt, reference: pReference, watching: pWatching, health: overview };
   if (pages[kind]) return load(m, pages[kind]);
