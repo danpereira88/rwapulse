@@ -46,7 +46,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from db import get_connection, append_snapshot  # noqa: E402
+from db import get_connection  # noqa: E402
 from ingest.rwa_supply import cg_get, jsonrpc, _rpcs, SOLANA_RPCS, CG_KEY  # noqa: E402
 from ingest.rwa_universe import classify, EXCLUDE, CURATED  # noqa: E402
 
@@ -86,7 +86,7 @@ STABLECOIN_CATEGORIES = ("stablecoins",)
 CHAIN_ONLY_CLASS = {"onyc": ("credit", "OnRe")}
 MIN_MCAP = 10_000           # stop paging a category below this market cap
 PAGE_PAUSE = 2.5 if CG_KEY else 6.0
-RPC_PAUSE = 0.15
+RPC_PAUSE = 0.6     # between batched requests: free endpoints throttle bursts
 
 def fetch_categories(categories=None, min_mcap: float = MIN_MCAP) -> dict:
     """{coingecko_id: {name, symbol, price, mcap, categories:[...]}} across categories."""
@@ -256,20 +256,34 @@ def read_solana_many(mints: list, batch: int = 100) -> dict:
     holdings = {}   # (owner, mint) -> raw UI amount
     failed = set()
     for owner in sorted(set().union(*auths.values()) if auths else set()):
+        # All-or-nothing per wallet: if either token program's listing fails
+        # (after retries), drop what was read for this wallet and fall back to
+        # its associated accounts below — never both, or balances double up.
+        found, ok = {}, True
         for prog in TOKEN_PROGRAMS:
-            try:
-                res = jsonrpc(_rpcs("solana", SOLANA_RPCS), "getTokenAccountsByOwner",
-                              [owner, {"programId": prog}, {"encoding": "jsonParsed"}])
-            except Exception as e:
-                failed.add(owner)
-                log.warning(f"  holdings of {owner[:8]}… not read — {str(e)[:80]}")
-                continue
+            res = None
+            for attempt in range(4):
+                try:
+                    res = jsonrpc(_rpcs("solana", SOLANA_RPCS), "getTokenAccountsByOwner",
+                                  [owner, {"programId": prog}, {"encoding": "jsonParsed"}])
+                    break
+                except Exception as e:
+                    last = e
+                    time.sleep(2 * (attempt + 1))
+            if res is None:
+                ok = False
+                log.warning(f"  holdings of {owner[:8]}… not listed — {str(last)[:120]}; using its associated accounts")
+                break
             for acc in res.get("value") or []:
                 ti = acc["account"]["data"]["parsed"]["info"]
                 amt = ti.get("tokenAmount") or {}
                 key = (owner, ti.get("mint"))
-                holdings[key] = holdings.get(key, 0.0) + int(amt.get("amount") or 0) / 10 ** int(amt.get("decimals") or 0)
+                found[key] = found.get(key, 0.0) + int(amt.get("amount") or 0) / 10 ** int(amt.get("decimals") or 0)
             time.sleep(RPC_PAUSE)
+        if ok:
+            holdings.update(found)
+        else:
+            failed.add(owner)
     # Fallback for wallets the RPC wouldn't list (method unavailable, too many
     # accounts): read their associated token account for each mint directly.
     if failed:
@@ -293,7 +307,13 @@ def read_solana_many(mints: list, batch: int = 100) -> dict:
         if owners & failed:
             out[m]["issuer_held"] = None   # unknown: don't pretend it's zero
             continue
-        out[m]["issuer_held"] = sum(holdings.get((o, m), 0.0) for o in owners) * mult.get(m, 1.0)
+        held = sum(holdings.get((o, m), 0.0) for o in owners) * mult.get(m, 1.0)
+        if held > out[m]["supply"] * 1.001:     # can't hold more than exists: a read went wrong
+            out[m]["issuer_held"] = None
+            out[m]["error"] = None
+            log.warning(f"  {m[:8]}…: issuer holdings ({held:,.0f}) exceed supply ({out[m]['supply']:,.0f}) — not used")
+            continue
+        out[m]["issuer_held"] = min(held, out[m]["supply"])
     return out
 
 
@@ -312,28 +332,43 @@ SEL_ROLES = {"minter()": "0x07546172", "burner()": "0x27810b6e", "pauser()": "0x
 ISSUER_TREASURIES = {   # platform -> extra wallets known to hold unsold issuer inventory
     "ethereum": [],
 }
-EVM_BATCH = 20          # tokens per batched JSON-RPC request (7 calls each)
+EVM_BATCH = 15          # tokens per batched JSON-RPC request (7 calls each, ~105 per request)
+
+
+# Keyless public endpoints that accept batched eth_call. Tried in rotation with
+# backoff: free endpoints throttle bursts, so one failure isn't final.
+SWEEP_EVM_RPCS = {
+    "ethereum": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org", "https://1rpc.io/eth",
+                 "https://eth.llamarpc.com"],
+}
+EVM_ATTEMPTS = 8
 
 
 def evm_batch(platform: str, calls: list) -> list:
-    """calls: [(to, data)] -> [hex result or None], one batched request,
-    falling back across the chain's public endpoints."""
+    """calls: [(to, data)] -> [hex result or None] in one batched request.
+    Rotates through the chain's endpoints with backoff; a reverted call (no
+    owner(), no minter()…) comes back as None, not as a failure."""
     from ingest.rwa_supply import session, EVM_RPCS
+    urls = _rpcs(platform, SWEEP_EVM_RPCS.get(platform) or EVM_RPCS[platform])
     payload = [{"jsonrpc": "2.0", "id": i, "method": "eth_call", "params": [{"to": to, "data": data}, "latest"]}
                for i, (to, data) in enumerate(calls)]
     last = None
-    for url in _rpcs(platform, EVM_RPCS[platform]):
+    for attempt in range(EVM_ATTEMPTS):
+        url = urls[attempt % len(urls)]
         try:
             r = session.post(url, json=payload, timeout=40)
+            if r.status_code == 429 or r.status_code >= 500:
+                raise RuntimeError(f"HTTP {r.status_code}")
             r.raise_for_status()
             res = r.json()
-            if not isinstance(res, list):
-                raise RuntimeError(str(res)[:120])
+            if not isinstance(res, list):      # whole batch refused (rate limit, size limit, auth)
+                raise RuntimeError(str(res)[:300])
             by_id = {x.get("id"): x.get("result") for x in res}
             return [by_id.get(i) for i in range(len(calls))]
         except Exception as e:
-            last = e
-    raise RuntimeError(f"batched eth_call failed on all endpoints: {last}")
+            last = f"{url}: {e}"
+            time.sleep(min(2 * (attempt + 1), 10))
+    raise RuntimeError(f"batched eth_call failed after {EVM_ATTEMPTS} attempts — last: {last}"[:400])
 
 
 def _uint(h):
@@ -362,7 +397,7 @@ def read_evm_many(platform: str, addresses: list) -> dict:
         try:
             res = evm_batch(platform, calls)
         except Exception as e:
-            out.update({a: {"supply": None, "issuer_held": None, "error": f"read failed: {str(e)[:100]}"} for a in chunk})
+            out.update({a: {"supply": None, "issuer_held": None, "error": f"read failed: {str(e)[:300]}"} for a in chunk})
             continue
         n = len(sels)
         for k, a in enumerate(chunk):
@@ -398,6 +433,7 @@ def read_evm_many(platform: str, addresses: list) -> dict:
 
 READERS = {"solana": read_solana_many, "ethereum": lambda addrs: read_evm_many("ethereum", addrs)}
 SWEEP_PLATFORMS = ("solana", "ethereum")
+MAX_FAILED_SHARE = 0.10   # a chain sweep with more unread tokens than this isn't saved
 
 
 def fetch_all_platform_addresses(platforms) -> dict:
@@ -453,8 +489,18 @@ def sweep(platforms=SWEEP_PLATFORMS) -> pd.DataFrame:
         df = pd.DataFrame(rows)
         if not df.empty:
             ok = df[df["status"].str.startswith("ok")]
+            # Unreadable tokens (RPC failures) and unread issuer wallets both
+            # bias the totals; past the threshold, keep last week's sweep.
+            bad = (~df["status"].str.startswith("ok")) & (df["status"] != "no price") \
+                | (df["status"] == "ok, issuer holdings not read")
+            share = bad.mean()
             log.info(f"{platform}: {len(df)} RWA tokens, {len(ok)} read, ${ok['value_usd'].sum() / 1e9:.2f}B "
-                     f"circulating (${ok['minted_value_usd'].sum() / 1e9:.2f}B minted)")
+                     f"circulating (${ok['minted_value_usd'].sum() / 1e9:.2f}B minted), {share:.0%} incomplete")
+            if share > MAX_FAILED_SHARE:
+                log.warning(f"{platform}: {share:.0%} of tokens incomplete (limit {MAX_FAILED_SHARE:.0%}) — "
+                            f"not saving this chain's sweep; its page keeps the last complete one. "
+                            f"First error: {df.loc[bad, 'status'].iloc[0][:300]}")
+                continue
             frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -478,10 +524,27 @@ def run(dry_run: bool = False, platforms=SWEEP_PLATFORMS) -> dict:
         return {"warning": "nothing read"}
     con = get_connection()
     try:
-        n = append_snapshot(con, "chain_sweep", df)
+        n = save_sweep(con, df)
     finally:
         con.close()
     return {"tokens": len(df), "rows_written": n, "platforms": sorted(df["platform"].unique())}
+
+
+def save_sweep(con, df: pd.DataFrame, snapshot_date: str = None) -> int:
+    """Write this run's chains for today, replacing an earlier run of the same
+    chains on the same day (append_snapshot would skip a same-day re-run)."""
+    from datetime import date as _date
+    df = df.copy()
+    df["snapshot_date"] = snapshot_date or _date.today().isoformat()
+    exists = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'chain_sweep'").fetchone()[0]
+    if not exists:
+        con.execute("CREATE TABLE chain_sweep AS SELECT * FROM df")
+        return len(df)
+    platforms = sorted(df["platform"].unique())
+    con.execute(f"DELETE FROM chain_sweep WHERE snapshot_date = ? AND platform IN ({', '.join('?' * len(platforms))})",
+                [df["snapshot_date"].iloc[0], *platforms])
+    con.execute("INSERT INTO chain_sweep BY NAME SELECT * FROM df")
+    return len(df)
 
 
 if __name__ == "__main__":
