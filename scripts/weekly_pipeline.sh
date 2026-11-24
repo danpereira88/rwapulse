@@ -4,6 +4,8 @@
 #
 # Runs weekly via launchd (see the plist for the schedule) (com.rwapulse.weekly-pipeline).
 # Sequence:
+#   0. Update the code from GitHub (fast-forward only; skipped if this checkout
+#      has local edits or commits of its own)
 #   1. DuckDB ingestion + Supabase TVL/token sync  (run_all_with_sync.py)
 #   2. On-chain activity enrichment                (run_enrichment.py)
 #   3. Freshness check + pipeline_health upsert    (scripts/check_freshness.py)
@@ -27,6 +29,24 @@ _log "Weekly pipeline starting"
 _log "========================================================"
 
 PIPELINE_STATUS="ok"
+
+# ── Step 0: update the code ───────────────────────────────────────────────────
+# Code changes are pushed to GitHub; without this the job keeps running whatever
+# was on disk when the folder was set up. Fast-forward only, and only when the
+# checkout is clean, so local work is never overwritten.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
+    if ! git fetch -q origin main 2>>"${LOG}"; then
+        _log "Step 0: could not reach GitHub — running the code already on disk"
+    elif ! git diff --quiet || ! git diff --cached --quiet; then
+        _log "Step 0: local edits to tracked files — not updating code (commit or discard them)"
+    elif [ "$(git rev-list --count origin/main..HEAD)" != "0" ]; then
+        _log "Step 0: this checkout has commits GitHub doesn't — not updating code"
+    elif [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+        git merge -q --ff-only origin/main && _log "Step 0: code updated to $(git rev-parse --short HEAD)"
+    else
+        _log "Step 0: code already up to date ($(git rev-parse --short HEAD))"
+    fi
+fi
 
 # ── Step 1: ingest + sync ─────────────────────────────────────────────────────
 _log "Step 1: ingest + Supabase sync"
