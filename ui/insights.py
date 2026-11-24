@@ -765,44 +765,60 @@ def page_compare(con):
     avg_s = s["total"] / bs["holders"] if bs["holders"] else None
     avg_e = e["total"] / be["holders"] if be["holders"] else None
 
+    def top_in(p, cls):
+        xs = [a for a in p["assets"] if a["asset_class"] == cls]
+        return max(xs, key=lambda a: a["tvl"]) if xs else None
+
     f = []
     if ready:
-        r_meas = ratio(e['total'], s['total'])
-        f.append({"key": "scale", "title": f"Ethereum is {r_meas:.1f}× Solana" + (f", not {b['value_x']:.1f}×" if r_meas > 1.3 * b['value_x'] else ""),
-                  "body": f"Measured on-chain, Ethereum holds ${e['total']/1e9:.2f}B of tokenised assets and Solana "
-                          f"${s['total']/1e9:.2f}B. rwa.xyz shows ${be['value']/1e9:.1f}B vs ${bs['value']/1e9:.1f}B ({b['as_of']})"
-                          + (" — a narrower gap, because it counts Solana's unsold issuer inventory." if r_meas > 1.3 * b['value_x'] else ".")})
-        f.append({"key": "inventory", "title": f"{pct(si['held'], si['minted']):.0f}% of what's minted on Solana is still with the issuers",
-                  "body": f"${si['held']/1e9:.2f}B of ${si['minted']/1e9:.2f}B minted on Solana sits in the issuers' own wallets, "
-                          f"against {pct(ei['held'], ei['minted']):.0f}% (${ei['held']/1e9:.2f}B) on Ethereum. "
-                          + ("Issuers list on Solana ahead of demand; a listing there signals availability, not usage."
-                             if pct(si['held'], si['minted']) > 2 * (pct(ei['held'], ei['minted']) or 0) else "")})
+        r = ratio(e["total"], s["total"])
+        f.append({"key": "scale", "viz": {"label": "Tokenised value held", "fmt": "usd", "solana": s["total"], "ethereum": e["total"]},
+                  "title": f"Ethereum holds {r:.0f} times as much tokenised value as Solana",
+                  "body": f"Counting only tokens that have actually been sold to holders, Ethereum has ${e['total']/1e9:.1f}B "
+                          f"and Solana ${s['total']/1e9:.1f}B. Public trackers that count every token minted put the two "
+                          f"chains closer together (rwa.xyz: ${be['value']/1e9:.1f}B and ${bs['value']/1e9:.1f}B), mainly "
+                          "because so much of Solana's supply hasn't been sold yet — see the next point."})
+        sh, eh = pct(si["held"], si["minted"]), pct(ei["held"], ei["minted"])
+        f.append({"key": "inventory", "viz": {"label": "Share of minted supply still with issuers", "fmt": "pct", "solana": sh, "ethereum": eh},
+                  "title": ("Most tokens minted on Solana are still sitting with their issuers" if sh > 50 else
+                            f"{sh:.0f}% of tokens minted on Solana are still with their issuers"),
+                  "body": f"Of ${si['minted']/1e9:.1f}B minted on Solana, ${si['held']/1e9:.1f}B ({sh:.0f}%) is in the issuers' "
+                          f"own wallets: created, but not yet bought by anyone. On Ethereum it's {eh:.0f}% "
+                          f"(${ei['held']/1e9:.1f}B of ${ei['minted']/1e9:.1f}B)."
+                          + (" Issuers are listing on Solana ahead of demand, so a token being available there doesn't "
+                             "mean anyone holds it." if sh > 2 * eh else "")})
     if stocks and 35 <= (stocks["solana_share"] or 0) <= 65:
-        f.append({"key": "stocks", "title": "Tokenised stocks are the one place Solana matches Ethereum",
-                  "body": f"${stocks['solana']/1e6:,.0f}M of tokenised stocks on Solana vs ${stocks['ethereum']/1e6:,.0f}M on Ethereum "
-                          f"({stocks['solana_share']:.0f}% on Solana), while Solana is a fraction of Ethereum overall."})
+        f.append({"key": "stocks", "viz": {"label": "Tokenised stocks & ETFs held", "fmt": "usd", "solana": stocks["solana"], "ethereum": stocks["ethereum"]}, "title": "In tokenised stocks, Solana is level with Ethereum",
+                  "body": f"${stocks['solana']/1e6:,.0f}M of tokenised stocks and ETFs are held on Solana and "
+                          f"${stocks['ethereum']/1e6:,.0f}M on Ethereum. It's the only asset class where the smaller "
+                          "chain keeps pace."})
     if funds and gold and funds["ethereum"] > 2 * funds["solana"] and gold["ethereum"] > 2 * gold["solana"]:
-        f.append({"key": "funds", "title": "Funds and gold live on Ethereum",
-                  "body": f"Treasuries & MMFs: ${funds['ethereum']/1e9:.2f}B on Ethereum vs ${funds['solana']/1e9:.2f}B on Solana "
-                          f"({ratio(funds['ethereum'], funds['solana']) or 0:.0f}×). Gold & commodities: ${gold['ethereum']/1e9:.2f}B vs "
+        top_credit = top_in(s, "credit")
+        f.append({"key": "funds", "viz": {"label": "Treasury & money-market funds held", "fmt": "usd", "solana": funds["solana"], "ethereum": funds["ethereum"]}, "title": "Funds and gold are overwhelmingly on Ethereum",
+                  "body": f"Tokenised treasury and money-market funds: ${funds['ethereum']/1e9:.1f}B on Ethereum, "
+                          f"${funds['solana']/1e9:.1f}B on Solana. Gold and commodities: ${gold['ethereum']/1e9:.1f}B against "
                           f"${gold['solana']/1e6:,.0f}M."
-                          + (f" Credit is closer: ${credit['ethereum']/1e6:,.0f}M vs ${credit['solana']/1e6:,.0f}M, "
-                             "much of Solana's from one DeFi-native issuer (OnRe)." if credit else "")})
+                          + (f" Private credit is closer (${credit['ethereum']/1e6:,.0f}M against ${credit['solana']/1e6:,.0f}M)"
+                             + (f", and on Solana {top_credit['tvl'] / credit['solana'] * 100:.0f}% of it is one issuer, "
+                                f"{top_credit['issuer']}." if top_credit and credit["solana"] else ".")
+                             if credit else "")})
     if avg_s and avg_e:
-        f.append({"key": "reach", "title": f"Solana reaches {b['holders_x']:.1f}× the wallets with ~{avg_e/avg_s:.0f}× smaller holdings",
-                  "body": f"{bs['holders']/1e6:.2f}M RWA holders on Solana vs {be['holders']/1e3:,.0f}K on Ethereum (rwa.xyz, {b['as_of']}). "
-                          f"Measured value per holder: ${avg_s:,.0f} on Solana, ${avg_e:,.0f} on Ethereum. Solana is where small "
-                          "holders are; Ethereum is where the money is."})
-    f.append({"key": "defi", "title": "Solana puts more of its RWAs to work in DeFi",
-              "body": f"{bs['defi_share']:.1f}% of Solana's active RWA value is used in DeFi vs {be['defi_share']:.1f}% on Ethereum "
-                      f"(DefiLlama, {b['as_of']}). DeFi-native products drive it: OnRe, Huma and Hastra run at 84–91%. "
-                      "Institutional funds on Solana mostly sit idle (BUIDL: 0.65%)."})
-    f.append({"key": "concentration", "title": f"Solana's base is narrower: top three issuers hold {top3(s):.0f}%",
-              "body": f"Solana: {', '.join(x[0] for x in s['issuers'][:3])} ({top3(s):.0f}%). Ethereum: "
-                      f"{', '.join(x[0] for x in e['issuers'][:3])} ({top3(e):.0f}%). One issuer's decisions can move Solana's total."})
+        f.append({"key": "reach", "viz": {"label": "Wallets holding tokenised assets", "fmt": "count", "solana": bs["holders"], "ethereum": be["holders"]}, "title": "Solana reaches more people, with much smaller holdings",
+                  "body": f"{bs['holders']/1e6:.1f}M wallets hold tokenised assets on Solana, against {be['holders']/1e3:,.0f}K "
+                          f"on Ethereum (rwa.xyz). Divided by what's held, that's about ${avg_s:,.0f} per wallet on Solana "
+                          f"and ${avg_e:,.0f} on Ethereum. Solana is where small holders are; Ethereum is where the money is."})
+    f.append({"key": "defi", "viz": {"label": "Share of tokenised value used in DeFi", "fmt": "pct", "solana": bs["defi_share"], "ethereum": be["defi_share"]}, "title": "Tokens on Solana are used more in DeFi",
+              "body": f"{bs['defi_share']:.0f}% of Solana's tokenised value is deposited in lending and other DeFi apps, "
+                      f"against {be['defi_share']:.0f}% on Ethereum (DefiLlama, {b['as_of']}). Products built for DeFi drive "
+                      "this — OnRe, Huma and Hastra have 84–91% of their value in DeFi — while institutional funds on "
+                      "Solana mostly sit unused: 0.65% of BlackRock's BUIDL there is in DeFi."})
+    f.append({"key": "concentration", "viz": {"label": "Share held by the top three issuers", "fmt": "pct", "solana": top3(s), "ethereum": top3(e)}, "title": "Solana depends on a handful of issuers",
+              "body": f"Three issuers hold {top3(s):.0f}% of Solana's tokenised value "
+                      f"({', '.join(x[0] for x in s['issuers'][:3])}); on Ethereum the top three hold {top3(e):.0f}% "
+                      f"({', '.join(x[0] for x in e['issuers'][:3])}). A single issuer's decisions can move Solana's total."})
 
-    verdict = ("Solana is a real distribution channel for tokenised stocks and DeFi-native credit — small tickets, many "
-               "wallets, heavy DeFi use. For funds, gold and institutional money, Ethereum leads by a wide margin.")
+    verdict = ("Solana is a real distribution channel for tokenised stocks and for credit products built for DeFi: "
+               "many wallets, small holdings, heavy DeFi use. Funds, gold and institutional money are on Ethereum.")
     return {
         "as_of": s["latest"], "sweep_date": s.get("sweep_date"), "eth_sweep_date": e.get("sweep_date"), "ready": ready,
         "solana": {"counted": s["total"], "minted": si.get("minted"), "held": si.get("held"),

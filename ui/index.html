@@ -10,7 +10,7 @@
 <style>
   :root {
     --bg: #0c1a14; --panel: #12241c; --panel2: #173025; --line: #24402f;
-    --text: #e6efe9; --muted: #8fa89a; --teal: #3fc1b0; --gold: #d8b45a;
+    --text: #edf3ef; --muted: #a9bdb1; --teal: #3fc1b0; --gold: #d8b45a;
     --up: #5fd09a; --down: #e57b6b;
     --mono: "DM Mono", ui-monospace, Menlo, monospace;
     --serif: "Fraunces", Georgia, serif;
@@ -18,7 +18,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); display: flex; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); display: flex; -webkit-font-smoothing: antialiased; }
   a { color: var(--teal); }
   nav { width: 230px; flex: none; border-right: 1px solid var(--line); padding: 20px 0; overflow-y: auto; background: #0a1611; }
   nav .brand { font-family: var(--serif); font-size: 22px; padding: 0 20px 4px; }
@@ -32,22 +32,22 @@
   nav button small { color: var(--muted); font-family: var(--mono); font-size: 11px; }
   main { flex: 1; overflow-y: auto; padding: 28px 36px 60px; min-width: 0; }
   h1 { font-family: var(--serif); font-weight: 600; font-size: 28px; margin: 0 0 4px; }
-  .desc { color: var(--muted); margin: 0 0 20px; }
+  .desc { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
   .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-  .kpi .label { color: var(--muted); font-size: 12px; }
+  .kpi .label { color: var(--muted); font-size: 13px; }
   .kpi .value { font-family: var(--mono); font-size: 24px; margin-top: 4px; }
-  .kpi .note { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+  .kpi .note { font-size: 13px; color: var(--muted); margin-top: 2px; }
   .grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-bottom: 16px; }
   @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
-  .card h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+  .card h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
   .card h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .up { color: var(--up); } .down { color: var(--down); }
   .num { font-family: var(--mono); text-align: right; white-space: nowrap; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel2); cursor: pointer; white-space: nowrap; user-select: none; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; position: sticky; top: 0; background: var(--panel2); cursor: pointer; white-space: nowrap; user-select: none; }
   th.sorted { color: var(--teal); }
   td { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   tbody tr:hover { background: var(--panel2); }
@@ -87,7 +87,7 @@
   ol.findings li { margin: 0 0 10px; }
   .dual .h, .key.h { background: var(--gold); }
   tr.hl td { background: rgba(255,255,255,0.04); }
-  .banner { border: 1px solid #5a4a22; background: #1d1a0f; color: #e8dcb6; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 18px; max-width: 980px; }
+  .banner { border: 1px solid #5a4a22; background: #1d1a0f; color: #e8dcb6; border-radius: 10px; padding: 12px 16px; font-size: 14px; line-height: 1.55; margin: 0 0 18px; max-width: 980px; }
   .pill.src-gold { color: var(--gold); border-color: #5a4a22; } .pill.src-teal { color: var(--teal); border-color: #1f5a52; } .pill.src-red { color: var(--down); border-color: #5a2a22; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .pcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
@@ -104,6 +104,47 @@
   .foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; max-width: 980px; }
   .foot p { margin: 0 0 8px; } .foot a { color: var(--muted); text-decoration: underline; }
 
+
+  /* ── Solana vs Ethereum (article layout) ── */
+  :root { --sol: #e7a94a; --eth: #6fa8ff; }
+  .article { max-width: 860px; }
+  .article h1 { font-size: 34px; line-height: 1.15; margin: 4px 0 14px; }
+  .article .standfirst { font-family: var(--serif); font-size: 21px; line-height: 1.45; color: #f5f8f6; margin: 0 0 10px; }
+  .article .meta { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+  .article h2 { font-family: var(--serif); font-weight: 600; font-size: 24px; margin: 40px 0 14px; }
+  .chip { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+  .chip.sol { background: var(--sol); } .chip.eth { background: var(--eth); }
+  .board { display: grid; grid-template-columns: 1.3fr 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
+  .board > div { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .board > div:nth-last-child(-n+3) { border-bottom: 0; }
+  .board .hd { font-weight: 600; font-size: 15px; background: var(--panel2); }
+  .board .lbl { color: var(--muted); font-size: 14px; }
+  .board .lbl small { display: block; font-size: 12.5px; opacity: .85; margin-top: 2px; }
+  .board .val { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .board .val.lead { color: #fff; } .board .val.trail { color: var(--muted); font-weight: 500; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; margin: 0 0 14px; }
+  .finding .n { font-size: 13px; color: var(--gold); font-weight: 600; letter-spacing: .04em; margin-bottom: 6px; }
+  .finding h3 { font-family: var(--serif); font-weight: 600; font-size: 21px; line-height: 1.3; margin: 0 0 10px; }
+  .finding p { font-size: 16px; line-height: 1.65; margin: 0 0 16px; color: #dfe8e3; }
+  .pairbars .cap { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .pairbars .row { display: grid; grid-template-columns: 82px 1fr 92px; align-items: center; gap: 12px; margin: 6px 0; font-size: 14px; }
+  .pairbars .track { height: 12px; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+  .pairbars .fill { height: 100%; border-radius: 6px; min-width: 3px; }
+  .pairbars .fill.sol { background: var(--sol); } .pairbars .fill.eth { background: var(--eth); }
+  .pairbars .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .classgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .classgrid .finding { margin: 0; padding: 18px 20px; }
+  .classgrid h3 { font-family: var(--sans); font-size: 16px; margin-bottom: 12px; }
+  details.method { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 14px; }
+  details.method > summary { font-size: 16px; color: var(--text); font-weight: 600; margin: 4px 0 16px; }
+  details.method > summary small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  @media (max-width: 760px) {
+    .article h1 { font-size: 26px; } .article .standfirst { font-size: 18px; }
+    .board { grid-template-columns: 1.1fr 1fr 1fr; } .board > div { padding: 12px 10px; } .board .val { font-size: 17px; }
+    .finding { padding: 18px 16px; } .finding h3 { font-size: 19px; } .finding p { font-size: 15.5px; }
+    .pairbars .row { grid-template-columns: 70px 1fr 78px; gap: 8px; }
+    .classgrid { grid-template-columns: 1fr; }
+  }
   /* ── Phones and small tablets ───────────────────────────────────────────── */
   @media (max-width: 760px) {
     html, body { height: auto; }
@@ -508,97 +549,74 @@ async function pChain(m, key) {
 }
 
 // ── Solana vs Ethereum ──
+const fmtBy = (v, f) => v == null ? "—" : f === "pct" ? v.toFixed(0) + "%" : f === "count" ? compact(v) : compact(v, true);
+function pairBars2(v, cap) {
+  const max = Math.max(v.solana || 0, v.ethereum || 0) || 1;
+  const row = (key, cls, name) => `<div class="row"><span><span class="chip ${cls}"></span>${name}</span><div class="track"><div class="fill ${cls}" style="width:${(v[key] || 0) / max * 100}%"></div></div><span class="v">${fmtBy(v[key], v.fmt)}</span></div>`;
+  return `<div class="pairbars">${cap ? `<div class="cap">${esc(cap)}</div>` : ""}${row("solana", "sol", "Solana")}${row("ethereum", "eth", "Ethereum")}</div>`;
+}
 async function pCompare(m) {
   const c = await api("/api/page/compare"), S = c.solana, E = c.ethereum;
-  if (!c.ready) { m.innerHTML = `<div class="eyebrow">Chains · Solana vs Ethereum</div>${lede("Waiting for this week's chain sweeps.", "The comparison appears once both Solana and Ethereum have been swept.")}`; return; }
-  const max = Math.max(...c.classes.map(x => Math.max(x.solana, x.ethereum)));
-  const pair = x => `<div class="dual"><span class="b sol" style="width:${x.solana / max * 100}%"></span><span class="b eth" style="width:${x.ethereum / max * 100}%"></span></div>`;
-  m.innerHTML = `<div class="eyebrow">Chains · Solana vs Ethereum</div>
-    ${lede(esc(c.verdict), `Both chains measured the same way on ${esc(c.sweep_date)}: every tokenised asset CoinGecko lists, supply read on-chain, issuer-held inventory removed. Findings below are recomputed every week.`)}
-    <div class="kpis">
-      <div class="kpi"><div class="label">Counted on-chain</div><div class="value">${compact(S.counted, true)} vs ${compact(E.counted, true)}</div><div class="note">Solana vs Ethereum · ${c.ratio.toFixed(1)}×</div></div>
-      <div class="kpi"><div class="label">Unsold issuer inventory</div><div class="value">${(S.held / S.minted * 100).toFixed(0)}% vs ${(E.held / E.minted * 100).toFixed(0)}%</div><div class="note">share of what's minted</div></div>
-      <div class="kpi"><div class="label">Value per holder</div><div class="value">${compact(S.avg_holding, true)} vs ${compact(E.avg_holding, true)}</div><div class="note">${compact(S.holders)} vs ${compact(E.holders)} holders</div></div>
-      <div class="kpi"><div class="label">Used in DeFi</div><div class="value">${S.defi_share.toFixed(0)}% vs ${E.defi_share.toFixed(0)}%</div><div class="note">DefiLlama · ${esc(c.benchmark.as_of)}</div></div>
+  if (!c.ready) { m.innerHTML = `<div class="article"><div class="eyebrow">Chains</div><h1>Solana vs Ethereum</h1><p class="standfirst">Waiting for this week's chain sweeps.</p></div>`; return; }
+  const cell = (v, other, f) => `<div class="val">${fmtBy(v, f)}</div>`;
+  const brow = (label, note, sv, ev, f) => `<div class="lbl">${label}${note ? `<small>${note}</small>` : ""}</div>${cell(sv, ev, f)}${cell(ev, sv, f)}`;
+  m.innerHTML = `<div class="article">
+    <div class="eyebrow">Chains</div>
+    <h1>Solana vs Ethereum</h1>
+    <p class="standfirst">${esc(c.verdict)}</p>
+    <p class="meta">Both chains measured the same way on ${esc(c.sweep_date)}: every tokenised asset CoinGecko lists, supply read from the chain, tokens still in issuers' wallets left out. Updated weekly.</p>
+
+    <div class="board">
+      <div class="hd"></div><div class="hd"><span class="chip sol"></span>Solana</div><div class="hd"><span class="chip eth"></span>Ethereum</div>
+      ${brow("Tokenised value held", "tokens sold to holders", S.counted, E.counted, "usd")}
+      ${brow("Wallets holding them", "rwa.xyz count", S.holders, E.holders, "count")}
+      ${brow("Value per wallet", "", S.avg_holding, E.avg_holding, "usd")}
+      ${brow("Used in DeFi", "DefiLlama, " + esc(c.benchmark.as_of), S.defi_share, E.defi_share, "pct")}
+      ${brow("Minted but unsold", "share still with issuers", S.held / S.minted * 100, E.held / E.minted * 100, "pct")}
     </div>
-    <div class="card"><h3>What the data says</h3>
-      <ol class="findings">${c.findings.map(f => `<li><b>${esc(f.title)}.</b> ${esc(f.body)}</li>`).join("")}</ol></div>
-    <div class="grid2">
-      <div class="card"><h3>By asset class <small>counted · ${esc(c.as_of)}</small></h3>
-        <p class="muted" style="font-size:12px;margin:0 0 10px"><span class="key sol"></span> Solana &nbsp; <span class="key eth"></span> Ethereum</p>
-        <table class="dualtbl"><thead><tr><th>Asset class</th><th></th><th class="num">Solana</th><th class="num">Ethereum</th><th class="num">Solana share</th></tr></thead><tbody>
-        ${c.classes.map(x => `<tr><td>${esc(x.name)}</td><td style="min-width:120px">${pair(x)}</td><td class="num">${compact(x.solana, true)}</td><td class="num">${compact(x.ethereum, true)}</td><td class="num">${x.solana_share == null ? "—" : x.solana_share.toFixed(0) + "%"}</td></tr>`).join("")}
-        </tbody></table></div>
-      <div class="card"><h3>Largest issuers <small>share of each chain</small></h3>
-        <table><thead><tr><th>Solana</th><th class="num"></th><th>Ethereum</th><th class="num"></th></tr></thead><tbody>
-        ${S.issuers.map((x, i) => `<tr><td>${esc(x[0])}</td><td class="num">${x[2].toFixed(0)}%</td><td>${esc((E.issuers[i] || [""])[0])}</td><td class="num">${E.issuers[i] ? E.issuers[i][2].toFixed(0) + "%" : ""}</td></tr>`).join("")}
-        </tbody></table></div>
-    </div>
-    ${solanaVsEvm(c.benchmark, c.both, c.as_of, c.measured)}`;
+
+    <h2>What the data shows</h2>
+    ${c.findings.map((f, i) => `<div class="finding"><div class="n">${String(i + 1).padStart(2, "0")}</div><h3>${esc(f.title)}</h3><p>${esc(f.body)}</p>${f.viz ? pairBars2(f.viz, f.viz.label) : ""}</div>`).join("")}
+
+    <h2>By asset class</h2>
+    <div class="classgrid">${c.classes.map(x => `<div class="finding"><h3>${esc(x.name)}</h3>${pairBars2({solana: x.solana, ethereum: x.ethereum, fmt: "usd"})}<div class="cap muted" style="font-size:13px;margin-top:8px">${x.solana_share == null ? "" : x.solana_share.toFixed(0) + "% of the two chains' total is on Solana"}</div></div>`).join("")}</div>
+
+    <details class="method"><summary>Method and data <small>how this was measured, source tables, caveats</small></summary>
+      ${compareDetail(c.benchmark, c.both, c.as_of, c.measured)}
+    </details>
+  </div>`;
 }
 
-// Solana vs Ethereum / EVM: distribution benchmark (dated snapshot) + our own both-chain reads
-function measuredCompare(M, b) {
-  if (!M || !M.ethereum || !M.ethereum.minted) return "";
-  const S = M.solana, E = M.ethereum, hs = b.solana.holders, he = b.ethereum.holders;
-  const row = (l, a, e, f = v => compact(v, true)) => `<tr><td>${l}</td><td class="num">${f(a)}</td><td class="num">${f(e)}</td></tr>`;
-  const pctOf = (a, t) => t ? (a / t * 100).toFixed(0) + "%" : "—";
-  const mix = x => x.classes.slice(0, 4).map(c => `${esc(c[0])} ${pctOf(c[1], x.counted)}`).join("<br>");
-  return `<div class="card"><h3>Measured on-chain: Solana vs Ethereum <small>chain sweeps · ${esc(M.eth_sweep_date || "")}</small></h3>
-    <table><thead><tr><th></th><th class="num">Solana</th><th class="num">Ethereum</th></tr></thead><tbody>
-      ${row("Minted (supply × price)", S.minted, E.minted)}
-      ${row("Held in issuers' own wallets", S.held, E.held)}
-      <tr><td class="muted">…as a share of minted</td><td class="num">${pctOf(S.held, S.minted)}</td><td class="num">${pctOf(E.held, E.minted)}</td></tr>
-      ${row("Circulating", S.circulating, E.circulating)}
-      <tr class="hl">${`<td><b>Counted</b> <div class="muted" style="font-size:11px">circulating, confirmed by CoinGecko market caps</div></td><td class="num"><b>${compact(S.counted, true)}</b></td><td class="num"><b>${compact(E.counted, true)}</b></td>`}</tr>
-      ${row("Average holding (counted ÷ rwa.xyz holders)", S.counted / hs, E.counted / he)}
-      <tr><td>Asset mix</td><td class="num" style="white-space:normal">${mix(S)}</td><td class="num" style="white-space:normal">${mix(E)}</td></tr>
-      <tr><td>Largest issuers</td><td class="num" style="white-space:normal">${S.top_issuers.map(i => `${esc(i[0])} ${i[1].toFixed(0)}%`).join("<br>")}</td><td class="num" style="white-space:normal">${E.top_issuers.map(i => `${esc(i[0])} ${i[1].toFixed(0)}%`).join("<br>")}</td></tr>
-    </tbody></table>
-    <p class="muted" style="font-size:12px">Same method on both chains: every tokenised asset CoinGecko lists, supply read from the chain, issuer inventory removed, values CoinGecko's market caps don't back up left out. Inventory detection differs by chain — Solana mints name their authority wallets; on Ethereum the checks are the contract's owner, its issuer role wallets (minter, burner, pauser, multiplier updater) and the contract itself — so inventory under other role schemes may be missed on Ethereum.</p></div>`;
-}
+// Method and data for the Solana vs Ethereum tab
+function compareDetail(b, both, latest, M) {
+  const pp = v => v == null ? "—" : v.toFixed(0) + "%";
+  const S = M && M.solana, E = M && M.ethereum;
+  const r = (l, a, e) => `<tr><td>${l}</td><td class="num">${compact(a, true)}</td><td class="num">${compact(e, true)}</td></tr>`;
+  return `
+    <div class="card" style="margin-bottom:16px"><h3>From minted to counted</h3>
+      ${S && E ? `<table><thead><tr><th></th><th class="num">Solana</th><th class="num">Ethereum</th></tr></thead><tbody>
+        ${r("Minted on the chain (supply × price)", S.minted, E.minted)}
+        ${r("− Still in the issuers' own wallets", S.held, E.held)}
+        ${r("= Held by everyone else", S.circulating, E.circulating)}
+        <tr class="hl"><td><b>Counted</b></td><td class="num"><b>${compact(S.counted, true)}</b></td><td class="num"><b>${compact(E.counted, true)}</b></td></tr>
+      </tbody></table>` : ""}
+      <p class="muted" style="font-size:14px;margin:12px 0 0">"Counted" also leaves out tokens worth more on one chain than CoinGecko's market cap for the whole asset (stocks and commodities only), and adds assets the main multichain reader covers that the sweep misses — which is why it can differ from "held by everyone else". Issuers' wallets: on Solana, the wallets each token names as its authorities; on Ethereum, the contract's owner and its minter, burner, pauser and multiplier-updater roles. Inventory kept anywhere else looks like a real holder and is counted.</p></div>
 
-function solanaVsEvm(b, both, latest, measured) {
-  const sol = b.solana, eth = b.ethereum, usd0 = v => "$" + Math.round(v).toLocaleString();
-  const pp = v => v == null ? "—" : v.toFixed(1) + "%";
-  const maxShare = Math.max(...b.networks.map(n => Math.max(n.value_share, n.holder_share)));
-  const dual = n => `<div class="dual"><span class="b v" style="width:${n.value_share / maxShare * 100}%"></span><span class="b h" style="width:${n.holder_share / maxShare * 100}%"></span></div>`;
-  return `<div class="eyebrow" style="margin-top:34px">Detail · measurement and distribution across chains</div>
-    ${lede("How the two chains were measured, and where holders sit across all networks.",
-      `The measured table below uses this project's chain sweeps. The network table, holder counts and DeFi-use figures are rwa.xyz and DefiLlama's own numbers (snapshot of ${esc(b.as_of)}, not refreshed weekly); rwa.xyz values include issuer inventory, so they overstate chains where much is pre-minted.`)}
-    ${measuredCompare(measured, b)}
-    <div class="kpis">
-      <div class="kpi"><div class="label">RWA holders</div><div class="value">${compact(sol.holders)} vs ${compact(eth.holders)}</div><div class="note">Solana vs Ethereum · ${b.holders_x.toFixed(1)}×</div></div>
-      <div class="kpi"><div class="label">Average holding</div><div class="value">${compact(sol.per_holder, true)} vs ${compact(eth.per_holder, true)}</div><div class="note">Solana tickets ~${Math.round(b.ticket_x)}× smaller</div></div>
-      <div class="kpi"><div class="label">Share used in DeFi</div><div class="value">${pp(sol.defi_share)} vs ${pp(eth.defi_share)}</div><div class="note">DeFi active TVL / active AUM</div></div>
-      <div class="kpi"><div class="label">Inactive supply</div><div class="value">${pp(sol.inactive_share)} vs ${pp(eth.inactive_share)}</div><div class="note">minted but not in active AUM</div></div>
-    </div>
-    <div class="grid2">
-      <div class="card"><h3>Share of value vs share of holders <small>${esc(b.as_of)} · % of all ${compact(b.total_holders)} holders / ${compact(b.total_value, true)}</small></h3>
-        <p class="muted" style="font-size:12px;margin:0 0 10px"><span class="key v"></span> share of RWA value &nbsp; <span class="key h"></span> share of RWA holders</p>
-        <table class="dualtbl"><thead><tr><th>Network</th><th></th><th class="num">Value</th><th class="num">Holders</th><th class="num">Avg holding</th><th class="num">In DeFi</th></tr></thead><tbody>
-        ${b.networks.map(n => `<tr${n.name === "Solana" ? ' class="hl"' : ""}><td>${esc(n.name)}<div class="muted" style="font-size:11px">${esc(n.family)}</div></td><td style="min-width:120px">${dual(n)}</td>
-          <td class="num">${compact(n.value, true)}<div class="muted" style="font-size:11px">${n.value_share.toFixed(1)}%</div></td>
-          <td class="num">${compact(n.holders)}<div class="muted" style="font-size:11px">${n.holder_share.toFixed(1)}%</div></td>
-          <td class="num">${usd0(n.per_holder)}</td><td class="num">${pp(n.defi_share)}</td></tr>`).join("")}
-        </tbody></table></div>
-      <div class="card"><h3>Where Solana wins, and where it doesn't</h3>
-        <p><b>Wins on reach.</b> ${sol.holder_share.toFixed(0)}% of all RWA holders, against ${sol.value_share.toFixed(0)}% of rwa.xyz's value. Cheap transfers make small positions viable; Ethereum mainnet's ${eth.holder_share.toFixed(0)}% of holders hold ${eth.value_share.toFixed(0)}% of value.</p>
-        <p><b>Wins on composability.</b> ${pp(sol.defi_share)} of active value is used in DeFi, vs ${pp(eth.defi_share)} on Ethereum. DeFi-native products are the ones that get used.</p>
-        <p><b>Doesn't win on depth.</b> Institutional money funds listed on Solana mostly sit idle, which is why ${pp(sol.inactive_share)} of its supply is inactive.</p>
-        <p><b>Doesn't beat every EVM chain on reach.</b> BNB Chain and Robinhood Chain have more holders, through an exchange or broker that already owns the users.</p>
-        <p class="muted" style="font-size:12px">30-day change in active AUM: Solana ${pct(sol.change_30d)}, Ethereum ${pct(eth.change_30d)}.</p></div>
-    </div>
-    <div class="grid2">
-      <div class="card"><h3>Same asset, both chains <small>our on-chain reads · ${esc(latest)}</small></h3>
-        ${both.length ? `<table><thead><tr><th>Asset</th><th class="num">On Solana</th><th class="num">On Ethereum</th><th class="num">Other chains</th><th class="num">Solana share of Sol+Eth</th></tr></thead><tbody>
-        ${both.map(a => `<tr><td title="${esc(a.name)}">${esc(a.issuer)}<div class="muted" style="font-size:11px">${esc(a.category)}</div></td><td class="num">${compact(a.solana, true)}</td><td class="num">${compact(a.ethereum, true)}</td><td class="num">${compact(a.other, true)}</td><td class="num">${a.solana_vs_eth.toFixed(0)}%</td></tr>`).join("")}
-        </tbody></table><p class="muted" style="font-size:12px">For issuers on both chains, where the supply ended up. Measured weekly from the token contracts.</p>` : `<p class="muted">No asset read on both chains yet.</p>`}</div>
-      <div class="card"><h3>Product evidence on Solana <small>DefiLlama · ${esc(b.as_of)}</small></h3>
-        <table><tbody>${b.evidence.map(e => `<tr><td>${esc(e[0])}<div class="muted" style="font-size:11px">${esc(e[1])}</div></td><td>${esc(e[2])}</td></tr>`).join("")}</tbody></table></div>
-    </div>
-    <p class="muted" style="font-size:12px">Definitions: value is "distributed" RWA value excluding stablecoins; holders are wallets holding at least one RWA on that network, so one person with wallets on several chains counts on each, and airdrops or empty wallets can inflate counts. In DeFi = DeFi active TVL / active AUM. Inactive = on-chain AUM not counted as active. These benchmark figures are a dated snapshot and are not refreshed by the weekly pipeline.
-      Sources: ${b.sources.map(s => `<a href="${esc(s[1])}" target="_blank" rel="noopener">${esc(s[0])}</a>`).join(" · ")}.</p>`;
+    <div class="card" style="margin-bottom:16px"><h3>All networks <small>rwa.xyz and DefiLlama, ${esc(b.as_of)} · their figures, not refreshed weekly</small></h3>
+      <table><thead><tr><th>Network</th><th class="num">Value (rwa.xyz)</th><th class="num">Wallets</th><th class="num">Used in DeFi</th></tr></thead><tbody>
+      ${b.networks.map(n => `<tr${n.name === "Solana" || n.name === "Ethereum" ? ' class="hl"' : ""}><td>${esc(n.name)} <span class="muted" style="font-size:12px">${esc(n.family)}</span></td><td class="num">${compact(n.value, true)}</td><td class="num">${compact(n.holders)}</td><td class="num">${pp(n.defi_share)}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="muted" style="font-size:14px;margin:12px 0 0">rwa.xyz's values include tokens still held by issuers, so they run higher than the counted figures above. Wallet counts count a person once per chain and can include airdropped or empty wallets.</p></div>
+
+    ${both.length ? `<div class="card" style="margin-bottom:16px"><h3>Assets issued on both chains <small>this project's on-chain reads, ${esc(latest)}</small></h3>
+      <table><thead><tr><th>Issuer</th><th class="num">On Solana</th><th class="num">On Ethereum</th><th class="num">Solana's share</th></tr></thead><tbody>
+      ${both.map(a => `<tr><td>${esc(a.issuer)} <span class="muted" style="font-size:12px">${esc(a.category)}</span></td><td class="num">${compact(a.solana, true)}</td><td class="num">${compact(a.ethereum, true)}</td><td class="num">${a.solana_vs_eth.toFixed(0)}%</td></tr>`).join("")}
+      </tbody></table></div>` : ""}
+
+    <div class="card" style="margin-bottom:16px"><h3>Product evidence on Solana <small>DefiLlama, ${esc(b.as_of)}</small></h3>
+      <table><tbody>${b.evidence.map(e => `<tr><td>${esc(e[0])} <span class="muted" style="font-size:12px">${esc(e[1])}</span></td><td style="white-space:normal">${esc(e[2])}</td></tr>`).join("")}</tbody></table></div>
+
+    <p class="muted" style="font-size:14px">Sources: ${b.sources.map(x => `<a href="${esc(x[1])}" target="_blank" rel="noopener">${esc(x[0])}</a>`).join(" · ")} · <a href="https://github.com/danpereira88/rwapulse/blob/main/docs/methodology.md" target="_blank" rel="noopener">full methodology</a>.</p>`;
 }
 
 // ── What We're Watching ──
