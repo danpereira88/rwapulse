@@ -84,7 +84,7 @@ The pipeline now uses free sources for those products:
 | `ui/insights.py` | the above, else CoinGecko market cap or Centrifuge subgraph scaled to DefiLlama's 2026-09-13 level | gap-filled TVL, every row labelled with its source |
 
 Run on its own: `python ingest/rwa_supply.py --dry-run` (prints, writes nothing).
-Aptos and Sui aren't read yet; products with supply there count as incomplete
-and fall back to CoinGecko unless the on-chain total is within 0.9–1.5× of it.
+Chains read: EVM (Ethereum, BNB, Polygon, Arbitrum, Base, Optimism, Avalanche, Mantle, Etherlink, Plume), Solana, Stellar, XRPL, Aptos, Sui.
+The universe is asset-level (ingest/rwa_universe.py), grouped by issuer like DefiLlama's RWA dashboard.
 `dl_protocol_tvl` is now merged on each run instead of rebuilt, so history is kept.
 Local UI: `.venv/bin/python ui/app.py` → http://127.0.0.1:8765

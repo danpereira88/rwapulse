@@ -9,7 +9,6 @@ Usage (project root):  .venv/bin/python ui/export_static.py
 """
 
 import json
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,9 +30,8 @@ def write(name: str, obj) -> None:
 
 
 def main():
-    if SITE.exists():
-        shutil.rmtree(SITE)
-    (SITE / "data").mkdir(parents=True)
+    # Overwrite in place (no delete), so the folder stays tidy under git
+    (SITE / "data").mkdir(parents=True, exist_ok=True)
     con = app.connect()
     try:
         write("page-overview", insights.page_overview(con))

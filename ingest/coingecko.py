@@ -221,7 +221,7 @@ def ingest_rwa_category(con) -> int:
                 "vs_currency": "usd",
                 "category": cat_id,
                 "order": "market_cap_desc",
-                "per_page": 100,
+                "per_page": 250,   # CoinGecko's max; 100 cut off the smaller funds
                 "page": 1,
                 "sparkline": False,
             })
