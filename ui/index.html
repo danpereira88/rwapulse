@@ -455,9 +455,9 @@ async function pChain(m, key) {
   const ref = s.reference, cov = ref && ref.value ? s.total / ref.value * 100 : null;
   const shown = s.assets.slice(0, 100);
   m.innerHTML = `<div class="eyebrow">Chain · ${C}</div>
-    ${lede(`${compact(s.total, true)} of tokenised real-world assets sit on ${C}, read directly from ${s.n_tokens} token mints and net of issuer-held inventory.`,
+    ${lede(`${compact(s.total, true)} of tokenised real-world assets sit on ${C}, read directly from ${s.n_tokens} token ${key === "solana" ? "mints" : "contracts"} and net of issuer-held inventory.`,
       `As of ${esc(s.latest)}. Measured on-chain — circulating supply × price — for every tokenised asset CoinGecko lists on ${C}${s.sweep_date ? "" : " in the RWA Pulse universe"}. Tokenised stocks are included, as their own class.`
-      + (s.inventory ? ` Issuers have minted ${compact(s.inventory.minted, true)} on ${C}, but most of the gap is inventory still in their own wallets — see below.` : (cov != null ? ` For reference, ${esc(ref.source)} counts ${compact(ref.value, true)} on ${C} (${esc(ref.as_of)}).` : "")))}
+      + (s.inventory ? ` Issuers have minted ${compact(s.inventory.minted, true)} on ${C}; ${compact(s.inventory.held, true)} of that (${(s.inventory.held / s.inventory.minted * 100).toFixed(0)}%) is still in their own wallets — see below.` : (cov != null ? ` For reference, ${esc(ref.source)} counts ${compact(ref.value, true)} on ${C} (${esc(ref.as_of)}).` : "")))}
     <div class="banner"><b>Coverage.</b> ${s.sweep_date
         ? `Every ${C} token in CoinGecko's tokenised-asset categories is read (sweep of ${esc(s.sweep_date)}). Assets CoinGecko doesn't list — some chain-native credit pools and permissioned funds — are still missing.`
         : `Only tokens in the RWA Pulse universe are read, so most tokenised stocks and chain-native assets are missing.`}
