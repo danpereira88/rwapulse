@@ -1,6 +1,8 @@
 """
 Chain sweep — every tokenised real-world asset CoinGecko lists on a chain,
-with supply read on-chain. Covers Solana and Ethereum.
+with supply read on-chain. Covers Solana, the EVM chains (Ethereum, BNB Chain,
+Polygon, Arbitrum, Base, Optimism, Avalanche, Mantle, Plume, Etherlink), the
+XRP Ledger, Stellar, Aptos and Sui.
 
 The main on-chain reader (ingest/rwa_supply.py) covers the RWA Pulse universe:
 the top of CoinGecko's RWA categories, looked up coin by coin. That misses
@@ -10,7 +12,7 @@ most tokenised stocks and the long tail on any one chain. The sweep instead:
      id, name, price, market cap in one call per 250 coins);
   2. maps each coin to its mint on the chain (/coins/list?include_platform=true,
      one call for every coin CoinGecko lists);
-  3. reads each mint's supply from the chain (Solana getTokenSupply) × price.
+  3. reads each token's supply from the chain × price.
 
 Free sources only, no per-coin lookups, so a full Solana sweep is ~30 CoinGecko
 calls plus one RPC call per mint.
@@ -27,11 +29,16 @@ Table (appended per snapshot_date):
                 minted_value_usd, value_usd (circulating × price), cg_mcap_usd, status
 
 Minted vs circulating: issuers often pre-mint inventory into a wallet they
-control. Balances held by a mint's own authority wallets are subtracted, so
-value_usd is what's held by everyone else.
+control. Balances held by a token's own authority wallets are subtracted, so
+value_usd is what's held by everyone else. How far that goes depends on the
+chain (NETTING below): Solana and EVM net the token's authority wallets; on the
+XRP Ledger and Stellar the issuing account can't hold its own token, so supply
+is already net of the issuer but a separate distribution wallet still counts;
+Aptos and Sui report total supply with no netting.
 
 Usage:
-  python ingest/chain_sweep.py               # sweep Solana and write
+  python ingest/chain_sweep.py               # sweep every chain and write
+  python ingest/chain_sweep.py --platform xrp --dry-run   # one chain, print only
   python ingest/chain_sweep.py --dry-run     # print, write nothing
 """
 
@@ -340,6 +347,15 @@ EVM_BATCH = 15          # tokens per batched JSON-RPC request (7 calls each, ~10
 SWEEP_EVM_RPCS = {
     "ethereum": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org", "https://1rpc.io/eth",
                  "https://eth.llamarpc.com"],
+    "binance-smart-chain": ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://1rpc.io/bnb"],
+    "polygon-pos": ["https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org", "https://1rpc.io/matic"],
+    "arbitrum-one": ["https://arbitrum-one-rpc.publicnode.com", "https://arbitrum.drpc.org", "https://1rpc.io/arb"],
+    "base": ["https://base-rpc.publicnode.com", "https://base.drpc.org", "https://1rpc.io/base"],
+    "optimistic-ethereum": ["https://optimism-rpc.publicnode.com", "https://optimism.drpc.org", "https://1rpc.io/op"],
+    "avalanche": ["https://avalanche-c-chain-rpc.publicnode.com", "https://avalanche.drpc.org",
+                  "https://1rpc.io/avax/c"],
+    "mantle": ["https://mantle-rpc.publicnode.com", "https://mantle.drpc.org", "https://rpc.mantle.xyz"],
+    # plume-network, etherlink: the main reader's endpoints (EVM_RPCS)
 }
 EVM_ATTEMPTS = 8
 
@@ -431,8 +447,79 @@ def read_evm_many(platform: str, addresses: list) -> dict:
     return out
 
 
-READERS = {"solana": read_solana_many, "ethereum": lambda addrs: read_evm_many("ethereum", addrs)}
-SWEEP_PLATFORMS = ("solana", "ethereum")
+# ── Non-EVM chains ──
+# One request per token (these chains have no batched balance call over public
+# endpoints), so the pause matters more than on EVM.
+NON_EVM_PAUSE = 0.4
+
+
+def _per_token(read_one, addresses: list, issuer_held: float = 0.0) -> dict:
+    out = {}
+    for a in addresses:
+        try:
+            out[a] = {"supply": read_one(a), "issuer_held": issuer_held, "error": None}
+        except Exception as e:
+            out[a] = {"supply": None, "issuer_held": None, "error": f"read failed: {str(e)[:200]}"}
+        time.sleep(NON_EVM_PAUSE)
+    return out
+
+
+def xrpl_read(address: str) -> float:
+    """Supply on the XRP Ledger. CoinGecko lists issued currencies as the
+    issuer (r…), or CUR.r… / CUR-r… / r…+CUR; Multi-Purpose Tokens as their
+    48-hex-character issuance id. The issuing account can't hold its own token,
+    so both figures are already net of the issuer."""
+    from ingest.rwa_supply import xrpl_supply, XRPL_RPCS
+    a = address.strip()
+    if len(a) == 48 and all(c in "0123456789abcdefABCDEF" for c in a):
+        node = jsonrpc(_rpcs("xrp", XRPL_RPCS), "ledger_entry",
+                       [{"mpt_issuance": a, "ledger_index": "validated"}])["node"]
+        return int(node.get("OutstandingAmount") or 0) / 10 ** int(node.get("AssetScale") or 0)
+    if a.startswith("r") and not any(sep in a for sep in ".-:+"):
+        return xrpl_supply(a, _XRPL_SYMBOL.get(a, ""))
+    return xrpl_supply(a)
+
+
+_XRPL_SYMBOL = {}   # issuer-only address -> CoinGecko symbol, filled per sweep
+
+
+def read_xrpl_many(addresses: list) -> dict:
+    return _per_token(xrpl_read, addresses)
+
+
+def read_stellar_many(addresses: list) -> dict:
+    from ingest.rwa_supply import stellar_supply
+    return _per_token(lambda a: stellar_supply(a, _STELLAR_SYMBOL.get(a, "")), addresses)
+
+
+_STELLAR_SYMBOL = {}   # Soroban contract id -> CoinGecko symbol, filled per sweep
+
+
+def read_aptos_many(addresses: list) -> dict:
+    from ingest.rwa_supply import aptos_supply
+    return _per_token(lambda a: aptos_supply(a, None), addresses)
+
+
+def read_sui_many(addresses: list) -> dict:
+    from ingest.rwa_supply import sui_supply
+    return _per_token(lambda a: sui_supply(a, None), addresses)
+
+
+EVM_SWEEP = ("ethereum", "binance-smart-chain", "polygon-pos", "arbitrum-one", "base", "optimistic-ethereum",
+             "avalanche", "mantle", "plume-network", "etherlink")
+READERS = {"solana": read_solana_many,
+           **{p: (lambda p: lambda addrs: read_evm_many(p, addrs))(p) for p in EVM_SWEEP},
+           "xrp": read_xrpl_many, "stellar": read_stellar_many, "aptos": read_aptos_many, "sui": read_sui_many}
+SWEEP_PLATFORMS = ("solana", *EVM_SWEEP, "xrp", "stellar", "aptos", "sui")
+# What "circulating" nets out, per chain (shown on the site next to each chain).
+NETTING = {
+    "solana": "mint authority wallets",
+    **{p: "owner and role wallets (minter, burner, pauser)" for p in EVM_SWEEP},
+    "xrp": "issuer (structural); distribution wallets still counted",
+    "stellar": "issuer (structural); distribution wallets still counted",
+    "aptos": "none — total supply",
+    "sui": "none — total supply",
+}
 MAX_FAILED_SHARE = 0.10   # a chain sweep with more unread tokens than this isn't saved
 
 
@@ -442,7 +529,8 @@ def fetch_all_platform_addresses(platforms) -> dict:
     out = {p: {} for p in platforms}
     for r in rows:
         for p in platforms:
-            a = (r.get("platforms") or {}).get(p)
+            plats = r.get("platforms") or {}
+            a = plats.get(p) or (plats.get("xrpl") if p == "xrp" else None)
             if a:
                 out[p][r["id"]] = a
     return out
@@ -458,6 +546,11 @@ def sweep(platforms=SWEEP_PLATFORMS) -> pd.DataFrame:
     for platform in platforms:
         addrs = addrs_by_platform[platform]
         keep = {}
+        # Issuer-only XRPL ids and Soroban contract ids are resolved by symbol.
+        for cg_id, a in addrs.items():
+            if cg_id in coins:
+                sym = (coins[cg_id].get("symbol") or "").upper()
+                (_XRPL_SYMBOL if platform == "xrp" else _STELLAR_SYMBOL)[a] = sym
         for cg_id, coin in coins.items():
             if cg_id in addrs:
                 cls, issuer = asset_class(cg_id, coin)
